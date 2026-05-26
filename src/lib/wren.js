@@ -1,16 +1,62 @@
 // Wren — the AI coach. Calls /api/wren which proxies to Claude.
 
-const API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
-  ? '/api/wren' // vite proxy or relative; works via vercel dev or remote
-  : '/api/wren';
+const API = '/api/wren';
 
-export async function askWren(message, context, midWorkout = false) {
+export async function askWren(message, context = {}, midWorkout = false) {
+  const {
+    currentWeek,
+    currentMesocycle,
+    phase,
+    isDeload,
+    plateauFlags = [],
+    missedSessionCount = 0,
+    missedSessionDetails = [],
+    thisWeekSessions = [],
+    lastSessionData,
+    schedule = {},
+    unit = 'kg',
+    workoutNames = [],
+    activeProgram,
+    fullHistory = [],
+    myWorkouts = [],
+    sessions = [],
+    exerciseDb,
+  } = context;
+
   const res = await fetch(API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, context, midWorkout }),
+    body: JSON.stringify({
+      message,
+      context: {
+        myWorkouts,
+        schedule,
+        sessions,
+        exerciseDb,
+        fullHistory,
+        currentWeek,
+        currentMesocycle,
+        phase,
+        isDeload,
+        plateauFlags,
+        missedSessionCount,
+        missedSessionDetails,
+        thisWeekSessions,
+        lastSessionData,
+        workoutNames,
+        activeProgram,
+        unit,
+      },
+      midWorkout,
+    }),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
-  return data.reply;
+  return { reply: data.reply, actions: data.actions || [] };
+}
+
+export async function askWrenReaction(sessionData, context = {}) {
+  const prompt = `I just finished a session. Here is the data:\n${JSON.stringify(sessionData)}\n\nGive me a 2-4 sentence post-session reaction based on this data and my recent history.`;
+
+  return askWren(prompt, context, false);
 }

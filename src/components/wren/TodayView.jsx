@@ -1,0 +1,527 @@
+import React, { useState } from 'react';
+import { Play, Leaf, Check, Sparkles, Heart, CalendarDays } from 'lucide-react';
+import { c } from './tokens';
+import { getActiveProgram, getSessions, canonicalSetsFor, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed } from '../../lib/storage';
+import { getCurrentWeekAndMesocycle } from './wrenHelpers';
+
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Sunday'];
+
+const SESSION_COLORS = {
+  A: { gradient: 'linear-gradient(160deg, #C8B4E8 0%, #F4B8D4 50%, #FFD3B8 100%)', shadow: 'rgba(200,180,232,0.35)' },
+  B: { gradient: 'linear-gradient(160deg, #B4D4F0 0%, #C8B4E8 50%, #F4B8D4 100%)', shadow: 'rgba(180,212,240,0.35)' },
+  C: { gradient: 'linear-gradient(160deg, #FFD3B8 0%, #F4B8D4 50%, #C8B4E8 100%)', shadow: 'rgba(244,184,212,0.35)' },
+};
+
+export default function TodayView({ onStartWorkout, sessionsBump, onAskWren }) {
+  // Bumped after a manual schedule change to force a re-read of the program.
+  const [scheduleBump, setScheduleBump] = useState(0);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [draft, setDraft] = useState({});
+  void scheduleBump;
+  const rawProgram = getActiveProgram();
+  const program = rawProgram?.program_json || rawProgram || null;
+  const { week: currentWeek, hasStarted, startDate } = getCurrentWeekAndMesocycle(rawProgram);
+  // Compute deload directly from the week number — ignore whatever the
+  // (possibly wrong) program data says. Deload weeks are 4, 8, 12.
+  const isDeload = hasStarted && currentWeek > 0 && currentWeek % 4 === 0;
+
+  // Deload weeks cut volume ~40% (≈60% of the sets, min 1) and load ~10%.
+  const setsFor = (name) => {
+    const base = canonicalSetsFor(name);
+    return isDeload ? Math.max(1, Math.round(base * 0.6)) : base;
+  };
+
+  const today = new Date();
+  const dayName = today.toLocaleDateString('en-US', { weekday: 'long' });
+
+  // Find the current week by week_number (matches how ProgramView labels weeks).
+  // Falls back to array position if week_number is missing.
+  let currentWeekData = null;
+  if (program?.weeks?.length) {
+    const byNumber = program.weeks.find((w, i) => (w.week_number || i + 1) === currentWeek);
+    if (byNumber) {
+      currentWeekData = byNumber;
+    } else {
+      const weekIdx = Math.min(Math.max(0, currentWeek - 1), program.weeks.length - 1);
+      currentWeekData = program.weeks[weekIdx] || null;
+    }
+  }
+
+  const todaySession = currentWeekData?.sessions?.find(s =>
+    s.scheduled_day?.toLowerCase() === dayName.toLowerCase()
+  ) || null;
+
+  const todayStart = (() => {
+    const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime();
+  })();
+
+  void sessionsBump;
+  const doneToday = !!todaySession && getSessions().some(s =>
+    Number(s.finishedAt) >= todayStart &&
+    !(s.workoutName || '').includes('(past entry)')
+  );
+
+  const buildWorkoutFromSession = (session) => {
+    if (!session) return null;
+    const exercises = session.exercises.map(e => e.name);
+    const targets = {};
+    const rests = {};
+    const supersets = [];
+    const setsConfig = {};
+
+    for (const ex of session.exercises) {
+      const repStr = String(ex.reps || '10');
+      const topRep = parseInt(repStr.split('-').pop()) || 10;
+      targets[ex.name] = topRep;
+      // Always use the canonical set count for this exercise, regardless of
+      // what the program JSON says. Wren's generated sets are often wrong.
+      // On deload weeks this is reduced to cut volume.
+      setsConfig[ex.name] = setsFor(ex.name);
+      if (ex.superset_with) {
+        const existing = supersets.find(g => g.includes(ex.name) || g.includes(ex.superset_with));
+        if (existing) {
+          if (!existing.includes(ex.name)) existing.push(ex.name);
+        } else {
+          supersets.push([ex.name, ex.superset_with]);
+        }
+      }
+    }
+
+    return {
+      id: `wren_${session.session_label}_${currentWeek}`,
+      name: `Session ${session.session_label}`,
+      exercises,
+      targets,
+      rests,
+      supersets,
+      setsConfig,
+      tag: null,
+      deload: isDeload,
+    };
+  };
+
+  const allSessions = currentWeekData?.sessions || [];
+
+  // Count sessions logged since the start of the current PROGRAM week (not
+  // calendar week). Before the program starts this is 0. The program is
+  // week-aligned to startDate (May 25, a Monday), so program week N begins at
+  // startDate + (N-1) * 7 days.
+  // (sessionsBump above forces a re-render after a workout completes.)
+  const sessionsThisWeek = (() => {
+    if (!startDate || !hasStarted) return 0;
+    const weekStart = startDate.getTime() + (currentWeek - 1) * 7 * 86400000;
+    return getSessions().filter(s =>
+      Number(s.finishedAt) >= weekStart &&
+      !(s.workoutName || '').includes('(past entry)')
+    ).length;
+  })();
+
+  // Which session labels (A/B/C) have been completed this program week.
+  const doneLabels = (() => {
+    const set = new Set();
+    if (!startDate || !hasStarted) return set;
+    const weekStart = startDate.getTime() + (currentWeek - 1) * 7 * 86400000;
+    for (const s of getSessions()) {
+      if (Number(s.finishedAt) < weekStart) continue;
+      if ((s.workoutName || '').includes('(past entry)')) continue;
+      const m = /^Session\s+([A-Za-z])/.exec(s.workoutName || '');
+      if (m) set.add(m[1].toUpperCase());
+    }
+    return set;
+  })();
+
+  return (
+    <div style={{
+      flex: 1, overflowY: 'auto', padding: '16px 16px',
+      display: 'flex', flexDirection: 'column', gap: 14,
+      WebkitOverflowScrolling: 'touch',
+    }}>
+      {/* Header */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+          <h1 style={{ fontSize: 28, margin: 0, fontWeight: 800, letterSpacing: -0.8, background: `linear-gradient(90deg, ${c.rosedeep}, ${c.rose})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            Bloom
+          </h1>
+          <Heart size={10} style={{ color: c.rosedeep }} fill={c.rosedeep} />
+        </div>
+        <div style={{ fontSize: 12, color: c.muted, marginTop: 2 }}>
+          {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          {program ? ` · Week ${currentWeek}` : ''}
+          {isDeload ? ' · Deload' : ''}
+        </div>
+      </div>
+
+      {/* This week's schedule — always visible, editable, marks done sessions */}
+      {hasStarted && allSessions.length > 0 && (() => {
+        const confirmed = isScheduleConfirmedThisWeek();
+        return (
+          <div style={{
+            borderRadius: 20, padding: 18,
+            background: `linear-gradient(135deg, ${c.blush} 0%, ${c.blushLight} 100%)`,
+            border: `1px solid ${c.line}`,
+            boxShadow: '0 8px 24px rgba(180,140,200,0.12)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <div style={{
+                width: 34, height: 34, borderRadius: '50%', background: c.white,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                <CalendarDays size={17} color={c.rosedeep} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: c.charcoal }}>
+                  {confirmed ? 'This week' : 'New week, Lauren! 🌱'}
+                </div>
+                <div style={{ fontSize: 12, color: c.muted, marginTop: 2, lineHeight: 1.45 }}>
+                  {confirmed ? 'Your training days' : 'Which days are you training this week?'}
+                </div>
+              </div>
+              {!pickerOpen && (
+                <button
+                  onClick={() => {
+                    const init = {};
+                    for (const s of allSessions) init[s.session_label] = s.scheduled_day || '';
+                    setDraft(init);
+                    setPickerOpen(true);
+                  }}
+                  style={{
+                    background: c.white, border: `1px solid ${c.line}`, borderRadius: 999,
+                    padding: '5px 12px', fontSize: 12, fontWeight: 700, color: c.rosedeep,
+                    cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
+                  }}
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+
+            {!pickerOpen ? (
+              <>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {allSessions.map(s => {
+                    const sc = SESSION_COLORS[s.session_label] || SESSION_COLORS.A;
+                    const done = doneLabels.has(String(s.session_label).toUpperCase());
+                    const isToday = s.scheduled_day && s.scheduled_day.toLowerCase() === dayName.toLowerCase();
+                    return (
+                      <div key={s.session_label} style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '8px 10px', borderRadius: 12, background: c.white,
+                      }}>
+                        <div style={{
+                          width: 26, height: 26, borderRadius: 8, background: sc.gradient,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: 'white', fontSize: 12, fontWeight: 800, flexShrink: 0,
+                          opacity: done ? 0.5 : 1,
+                        }}>
+                          {s.session_label}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: done ? c.muted : c.charcoal, textDecoration: done ? 'line-through' : 'none' }}>
+                            Session {s.session_label}
+                          </div>
+                          <div style={{ fontSize: 11, color: c.muted }}>{s.scheduled_day || 'unscheduled'}</div>
+                        </div>
+                        {done ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#2e7d4a', fontSize: 11, fontWeight: 700 }}>
+                            <div style={{ width: 18, height: 18, borderRadius: '50%', background: '#4a8a5a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <Check size={12} color="white" strokeWidth={3} />
+                            </div>
+                            Done
+                          </div>
+                        ) : isToday ? (
+                          <span style={{ fontSize: 10, fontWeight: 700, color: c.rosedeep, background: c.blushLight, padding: '2px 8px', borderRadius: 999 }}>Today</span>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+                {!confirmed && (
+                  <button
+                    onClick={() => onAskWren && onAskWren()}
+                    style={{
+                      width: '100%', marginTop: 10, padding: '9px 0', borderRadius: 12, cursor: 'pointer',
+                      background: c.white, color: c.rosedeep, fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+                      border: `1px solid ${c.line}`,
+                    }}
+                  >
+                    Ask Wren to set them
+                  </button>
+                )}
+              </>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {allSessions.map(s => (
+                  <div key={s.session_label}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: c.charcoal, marginBottom: 5 }}>
+                      Session {s.session_label}
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {WEEKDAYS.map(day => {
+                        const active = draft[s.session_label] === day;
+                        const taken = !active && Object.entries(draft).some(([lbl, d]) => lbl !== s.session_label && d === day);
+                        return (
+                          <button
+                            key={day}
+                            onClick={() => setDraft(d => ({ ...d, [s.session_label]: day }))}
+                            style={{
+                              padding: '6px 9px', borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit',
+                              fontSize: 11, fontWeight: 700,
+                              border: `1px solid ${active ? c.rosedeep : c.line}`,
+                              background: active ? c.rosedeep : c.white,
+                              color: active ? 'white' : taken ? c.muted : c.charcoal,
+                              opacity: taken ? 0.55 : 1,
+                            }}
+                          >
+                            {day.slice(0, 3)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+                  <button
+                    onClick={() => {
+                      const dayByLabel = {};
+                      for (const [lbl, day] of Object.entries(draft)) if (day) dayByLabel[lbl] = day;
+                      if (Object.keys(dayByLabel).length) setProgramSchedule(dayByLabel);
+                      else markScheduleConfirmed();
+                      setPickerOpen(false);
+                      setScheduleBump(b => b + 1);
+                    }}
+                    style={{
+                      flex: 1, padding: '10px 0', borderRadius: 12, border: 'none', cursor: 'pointer',
+                      background: c.rosedeep, color: 'white', fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+                    }}
+                  >
+                    Save days
+                  </button>
+                  <button
+                    onClick={() => setPickerOpen(false)}
+                    style={{
+                      padding: '10px 16px', borderRadius: 12, cursor: 'pointer',
+                      background: c.white, color: c.muted, fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+                      border: `1px solid ${c.line}`,
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Today's session hero card */}
+      {todaySession && !doneToday && (() => {
+        const colors = SESSION_COLORS[todaySession.session_label] || SESSION_COLORS.A;
+        return (
+          <div style={{
+            borderRadius: 24, overflow: 'hidden',
+            background: colors.gradient,
+            boxShadow: `0 16px 36px ${colors.shadow}`,
+            color: 'white', position: 'relative',
+          }}>
+            <div style={{ padding: '22px 22px 14px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.4, opacity: 0.9, textTransform: 'uppercase', textShadow: '0 1px 4px rgba(0,0,0,0.15)' }}>
+                Session {todaySession.session_label} · {dayName}{isDeload ? ' · 🌙 Deload' : ''}
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 700, marginTop: 6, textShadow: '0 2px 6px rgba(0,0,0,0.15)' }}>
+                {todaySession.exercises.length} exercises
+              </div>
+            </div>
+
+            <div style={{ padding: '0 18px 12px' }}>
+              {todaySession.exercises.map((ex, i) => (
+                <div key={i} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '7px 4px',
+                  borderBottom: i < todaySession.exercises.length - 1 ? '1px solid rgba(255,255,255,0.12)' : 'none',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {ex.superset_with && (
+                      <span style={{ fontSize: 8, fontWeight: 700, background: 'rgba(255,255,255,0.2)', padding: '1px 5px', borderRadius: 999, letterSpacing: 0.5 }}>SS</span>
+                    )}
+                    <span style={{ fontSize: 13, fontWeight: 500, textShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>{ex.name}</span>
+                  </div>
+                  <span style={{ fontSize: 11, opacity: 0.8 }}>{setsFor(ex.name)}×{ex.reps || '?'}</span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ padding: '6px 18px 18px' }}>
+              <button
+                onClick={() => {
+                  const w = buildWorkoutFromSession(todaySession);
+                  if (w && onStartWorkout) onStartWorkout(w);
+                }}
+                style={{
+                  width: '100%', padding: '14px 0', borderRadius: 16,
+                  border: 'none', cursor: 'pointer',
+                  background: 'rgba(255,255,255,0.95)', color: c.charcoal,
+                  fontSize: 15, fontWeight: 700,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                }}
+              >
+                <Play size={16} fill={c.charcoal} /> Start Workout
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Done card */}
+      {todaySession && doneToday && (
+        <div style={{
+          borderRadius: 24, padding: 28,
+          background: 'linear-gradient(135deg, #e6f5ea 0%, #d4f0de 100%)',
+          border: '1px solid #c3e6cd', textAlign: 'center',
+          boxShadow: '0 8px 24px rgba(74,138,90,0.12)',
+        }}>
+          <div style={{
+            width: 52, height: 52, borderRadius: '50%', background: '#4a8a5a',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            margin: '0 auto 14px', boxShadow: '0 4px 12px rgba(74,138,90,0.25)',
+          }}>
+            <Check size={26} color="white" strokeWidth={3} />
+          </div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: '#2e7d4a' }}>
+            Session {todaySession.session_label} complete
+          </div>
+          <div style={{ fontSize: 12, color: '#4a8a5a', marginTop: 4 }}>
+            Rest up — you've earned it
+          </div>
+        </div>
+      )}
+
+      {/* Rest day card */}
+      {!todaySession && program && (
+        <div style={{
+          borderRadius: 24, padding: 28,
+          background: `linear-gradient(135deg, ${c.blushLight} 0%, white 100%)`,
+          border: `1px solid ${c.line}`, textAlign: 'center',
+          boxShadow: '0 8px 24px rgba(180,140,200,0.1)',
+        }}>
+          <div style={{
+            width: 52, height: 52, borderRadius: '50%', background: c.blush,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            margin: '0 auto 14px',
+          }}>
+            <Leaf size={24} color={c.rosedeep} />
+          </div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: c.charcoal }}>
+            {hasStarted ? 'Rest day' : 'Program starts soon'}
+          </div>
+          <div style={{ fontSize: 12, color: c.muted, marginTop: 4 }}>
+            {hasStarted
+              ? 'Recovery is where the magic happens'
+              : `Week 1 begins ${startDate ? startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'soon'}`}
+          </div>
+        </div>
+      )}
+
+      {/* No program */}
+      {!program && (
+        <div style={{
+          borderRadius: 20, padding: 28, background: c.white,
+          border: `1px solid ${c.line}`, textAlign: 'center',
+        }}>
+          <Sparkles size={22} color={c.muted} style={{ marginBottom: 10 }} />
+          <div style={{ fontSize: 14, fontWeight: 600, color: c.charcoal }}>No program yet</div>
+          <div style={{ fontSize: 12, color: c.muted, marginTop: 4 }}>Chat with Wren to get started</div>
+        </div>
+      )}
+
+      {/* All sessions */}
+      {allSessions.length > 0 && (
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: c.muted, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8 }}>
+            All Sessions
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {allSessions.map((session, i) => {
+              const isTodays = todaySession && session.session_label === todaySession.session_label;
+              const sColors = SESSION_COLORS[session.session_label] || SESSION_COLORS.A;
+              const done = doneLabels.has(String(session.session_label).toUpperCase());
+              return (
+                <button
+                  key={i}
+                  onClick={() => {
+                    const w = buildWorkoutFromSession(session);
+                    if (w && onStartWorkout) onStartWorkout(w);
+                  }}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '14px 16px', borderRadius: 18,
+                    background: c.white, border: `1px solid ${c.line}`,
+                    cursor: 'pointer', textAlign: 'left',
+                    boxShadow: '0 2px 8px rgba(180,140,200,0.08)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 12,
+                      background: sColors.gradient,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: 'white', fontSize: 13, fontWeight: 800,
+                      boxShadow: `0 2px 6px ${sColors.shadow}`,
+                      opacity: done ? 0.5 : 1,
+                    }}>
+                      {session.session_label}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: done ? c.muted : c.charcoal, textDecoration: done ? 'line-through' : 'none' }}>
+                        Session {session.session_label}
+                        {!done && isTodays && <span style={{ fontSize: 9, color: c.rosedeep, fontWeight: 700, marginLeft: 6, background: c.blushLight, padding: '1px 6px', borderRadius: 999 }}>TODAY</span>}
+                      </div>
+                      <div style={{ fontSize: 11, color: c.muted, marginTop: 1 }}>
+                        {session.exercises.length} exercises · {session.scheduled_day}
+                      </div>
+                    </div>
+                  </div>
+                  {done
+                    ? <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#4a8a5a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Check size={13} color="white" strokeWidth={3} /></div>
+                    : <Play size={14} color={c.muted} />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Footer */}
+      {program && (
+        <div style={{ padding: '8px 0 20px', textAlign: 'center' }}>
+          <div style={{
+            background: `linear-gradient(135deg, ${c.blushLight} 0%, white 100%)`,
+            borderRadius: 20, padding: '20px 16px',
+            border: `1px solid ${c.line}`,
+          }}>
+            <Sparkles size={16} color={c.rosedeep} style={{ marginBottom: 8 }} />
+            <div style={{ fontSize: 13, fontWeight: 600, color: c.charcoal, lineHeight: 1.5 }}>
+              {hasStarted
+                ? `Week ${currentWeek}${isDeload ? ' · Deload' : ''}`
+                : `Week 1 starts ${(() => {
+                    if (!startDate) return 'soon';
+                    const todayMid = new Date(); todayMid.setHours(0, 0, 0, 0);
+                    const startMid = new Date(startDate); startMid.setHours(0, 0, 0, 0);
+                    const days = Math.round((startMid - todayMid) / 86400000);
+                    if (days <= 0) return 'today';
+                    if (days === 1) return 'tomorrow';
+                    if (days < 7) return startDate.toLocaleDateString('en-US', { weekday: 'long' });
+                    return startDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+                  })()}`}
+            </div>
+            <div style={{ fontSize: 11, color: c.muted, marginTop: 8 }}>
+              {allSessions.length > 0
+                ? `${sessionsThisWeek} of ${allSessions.length} sessions done this week`
+                : `${sessionsThisWeek} session${sessionsThisWeek === 1 ? '' : 's'} done this week`}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

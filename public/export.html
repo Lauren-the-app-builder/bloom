@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bloom — Export</title>
+<style>
+  :root { color-scheme: light; }
+  body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 20px; background: #FDF9F9; color: #5A5266; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p { font-size: 13px; color: #9A92A6; margin: 0 0 14px; }
+  button { background: #5A5266; color: white; border: none; padding: 12px 16px; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; margin-right: 8px; margin-bottom: 12px; }
+  button.alt { background: #C97AAE; }
+  textarea { width: 100%; box-sizing: border-box; min-height: 60vh; font-family: ui-monospace, Menlo, monospace; font-size: 11px; padding: 12px; border: 1px solid #F0E8EE; border-radius: 12px; background: white; color: #5A5266; }
+  .ok { color: #4a8a5a; font-size: 12px; margin-left: 6px; }
+</style>
+</head>
+<body>
+  <h1>Bloom data export</h1>
+  <p>All <code>bloom:*</code> localStorage keys on this device. Tap copy, then paste somewhere safe.</p>
+  <div>
+    <button id="copy">Copy to clipboard</button>
+    <button class="alt" id="download">Download .json</button>
+    <span id="status" class="ok"></span>
+  </div>
+  <textarea id="dump" readonly></textarea>
+<script>
+  (function () {
+    var out = {};
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (!k || k.indexOf("bloom:") !== 0) continue;
+      var raw = localStorage.getItem(k);
+      try { out[k] = JSON.parse(raw); } catch (e) { out[k] = raw; }
+    }
+    var text = JSON.stringify(out, null, 2);
+    var ta = document.getElementById("dump");
+    ta.value = text;
+    ta.addEventListener("focus", function () { ta.select(); });
+
+    document.getElementById("copy").addEventListener("click", async function () {
+      var status = document.getElementById("status");
+      try {
+        await navigator.clipboard.writeText(text);
+        status.textContent = "Copied!";
+      } catch (e) {
+        ta.focus(); ta.select();
+        status.textContent = "Select all + copy manually";
+      }
+      setTimeout(function () { status.textContent = ""; }, 3000);
+    });
+
+    document.getElementById("download").addEventListener("click", function () {
+      var blob = new Blob([text], { type: "application/json" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "bloom-export-" + new Date().toISOString().slice(0, 10) + ".json";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+  })();
+</script>
+</body>
+</html>

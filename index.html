@@ -10,6 +10,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Bloom" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <title>Bloom</title>
   </head>
   <body>
@@ -17,8 +20,38 @@
     <script type="module" src="/src/main.jsx"></script>
     <script>
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(() => {});
+        window.addEventListener('load', async () => {
+          try {
+            const reg = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
+            // Always check for an updated worker on launch.
+            reg.update().catch(() => {});
+
+            // When a new worker is found, push it to take over and reload once it does.
+            const promote = (worker) => {
+              if (!worker) return;
+              worker.addEventListener('statechange', () => {
+                if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+                  worker.postMessage('SKIP_WAITING');
+                }
+              });
+            };
+            if (reg.waiting) reg.waiting.postMessage('SKIP_WAITING');
+            promote(reg.installing);
+            reg.addEventListener('updatefound', () => promote(reg.installing));
+
+            // When the active SW changes (new version took over), reload once.
+            let reloaded = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+              if (reloaded) return;
+              reloaded = true;
+              window.location.reload();
+            });
+
+            // Also re-check when the app is brought back to the foreground.
+            document.addEventListener('visibilitychange', () => {
+              if (document.visibilityState === 'visible') reg.update().catch(() => {});
+            });
+          } catch (_) {}
         });
       }
     </script>

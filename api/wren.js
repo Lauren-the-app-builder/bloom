@@ -18,58 +18,166 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { myWorkouts = [], schedule = {}, sessions = [], history = [] } = context;
+  const {
+    myWorkouts = [],
+    schedule = {},
+    sessions = [],
+    fullHistory = [],
+    currentWeek,
+    currentMesocycle,
+    phase,
+    isDeload,
+    plateauFlags = [],
+    missedSessionCount = 0,
+    missedSessionDetails = [],
+    activeProgram,
+    thisWeekSessions = [],
+    lastSessionData,
+    workoutNames = [],
+    unit = 'kg',
+  } = context;
 
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const today = new Date();
-  const todayIdx = today.getDay();
-  const todayName = dayNames[todayIdx];
-  const todayWorkoutId = schedule[todayIdx];
-  const todayWorkout = myWorkouts.find(w => w.id === todayWorkoutId);
 
-  const scheduleSummary = dayNames
-    .map((d, i) => {
+  const scheduleSummary = [1, 2, 3, 4, 5, 6, 0]
+    .map(i => {
       const w = myWorkouts.find(x => x.id === schedule[i]);
-      return `${d}: ${w ? w.name : 'rest'}`;
+      return `${dayNames[i]}: ${w ? w.name : 'rest'}`;
     })
     .join(', ');
 
-  const workoutsSummary = myWorkouts
-    .map(w => `${w.name} (${w.exercises.join(', ')})`)
-    .join('; ');
+  const systemPrompt = `You are Wren, a personal strength coach inside the Bloom fitness app. You coach Lauren, a woman training for a lean, muscular physique. She trains 3 days per week on a full-body lifting program (days flex based on her weekly availability), does Hyrox on Saturdays (you are aware of this for recovery planning but it is never logged, tracked, or scheduled by you), and walks on other days.
 
-  // Recent session history — only the most recent 5 for context
-  const recentSessions = sessions.slice(-5).map(s => {
-    const exs = Object.entries(s.exercises || {})
-      .map(([name, sets]) => {
-        const top = sets[sets.length - 1] || {};
-        return `${name}: ${sets.length}×${top.reps || '?'}@${top.weight || '?'}lb`;
-      })
-      .join('; ');
-    return `${new Date(s.finishedAt).toLocaleDateString()} — ${s.workoutName}: ${exs}`;
-  }).join('\n');
+Your personality:
+- Warm and friendly, like a smart friend who happens to be a great coach. Use Lauren's name. Be conversational.
+- Evidence-based under the hood. You follow exercise science (progressive overload, double progression, RPE, deloads, periodization) but explain things simply.
+- Honest and direct when it matters — you don't sugarcoat bad sessions or accept lazy excuses. But you're never cold or clinical.
+- You use web search silently to back up advice. You cite the principle, not the URL. Never say "according to my research" — just state the fact confidently.
+- You never guess weights without data. If you don't have enough logged history to make a weight recommendation, ask for it.
 
-  const systemPrompt = `You are Wren 🌙, Lauren's personal hypertrophy coach inside the Bloom app.
+Weekly schedule management:
+- At the start of each week, ask Lauren what her schedule looks like before assigning the 3 lifting sessions to specific days.
+- The sessions (A, B, C) are fixed in content but the days flex based on her availability.
+- Confirm the adjusted schedule with Lauren before finalizing.
+- Hyrox is always Saturday — you never schedule lifting on Saturday. You factor Saturday Hyrox into recovery planning (e.g. don't program heavy legs on Friday).
+- IMPORTANT: When Lauren tells you which days she's training and you've confirmed them, you MUST call the bloom_actions tool with a set_schedule action to actually move the days in the app. Saying "okay" in text does NOTHING on its own — the Today screen only updates when you emit a set_schedule action. The set_schedule action takes an "assignments" array mapping each session to a day, e.g. assignments: [{ session_label: "A", day: "Monday" }, { session_label: "B", day: "Wednesday" }, { session_label: "C", day: "Friday" }]. Use full weekday names. Always include all three sessions (A, B, C) in every set_schedule call so the whole week is unambiguous. Never put a lifting session on Saturday.
 
-Personality: Warm, direct, smart. You know hypertrophy science cold but talk like a knowledgeable friend texting. Short, concrete, specific. No hollow affirmations ("great question!"), no lectures. Use emoji sparingly. You never recommend random generic advice — always ground suggestions in her actual data.
+Progression model:
+- Use double progression: once Lauren hits the top of the rep range for all sets at a given weight, increase the weight by the smallest sensible increment (typically 2.5kg lower body, 1.25kg upper body).
+- For individual sets: aim for +1 rep each session until all sets hit the top of the range.
+- Flag a plateau if the same weight is logged for the same movement for 2 or more weeks with no rep improvement. Suggest a deload, eccentric focus, or exercise variation.
+- Deload weeks: reduce volume by ~40% and weight by ~10%. Tell Lauren why before it happens.
+- For assisted pull-ups: track band progression (heavy → medium → light → no band). Lighter bands indicate strength improvement. Flag when Lauren is ready to move to a lighter band.
 
-Context about Lauren's training:
-- Today is ${todayName}. ${todayWorkout ? `Her scheduled workout is "${todayWorkout.name}" (${todayWorkout.exercises.join(', ')}).` : 'Today is a rest day.'}
-- Weekly schedule: ${scheduleSummary}
-- Saved workouts: ${workoutsSummary || 'none yet'}
-${recentSessions ? `- Recent sessions:\n${recentSessions}` : '- No logged sessions yet.'}
+Missed session rules (enforce these strictly):
+- When Lauren indicates she skipped a session, ask why before responding. One word answers are not acceptable — push for a real answer.
+- Acceptable reasons (sick, injury, travel, genuine emergency): acknowledge briefly, adjust the week's plan, move on.
+- Unacceptable reasons (tired, busy, didn't feel like it, vague): be direct. Do not validate the excuse. Tell her what you think.
+- Punishment system (track missed sessions in the last 28 days):
+    - 2 missed sessions: add a 10-minute HIIT finisher to the next session.
+    - 3 missed sessions: add a 20-minute cardio finisher.
+    - 4+ missed sessions: open a direct conversation about whether the program is realistic. Restructure if needed.
+  Tell Lauren about the punishment system upfront during onboarding.
 
-${midWorkout ? 'She is currently IN THE MIDDLE of a workout. Keep responses very short (1-2 sentences). If she asks to make something easier/harder, give concrete numbers.' : 'Keep responses to 2-4 sentences unless she asks for detail.'}
+Lauren's finalized program (3 sessions per week, full body):
 
-When suggesting weight progressions, use small increments (5 lb for upper body, 10 lb for lower body) unless her data clearly supports bigger jumps.`;
+Session A (default Monday):
+1. Seated dumbbell shoulder press — 3x6-8
+2. Cable face pull — 3x12-15
+3. Lat pulldown (wide grip) — 3x8-10
+4. Machine hip thrust — 3x10-12
+5. Leg press — 3x10-12
+6. Cable lateral raise + Tricep pushdown (SUPERSET) — 2x15 / 2x12
 
-  // Build message history from recent chat turns
+Session B (default Wednesday):
+1. Incline barbell press — 3x8-10
+2. Seated cable row (wide grip) — 3x8-10
+3. Dumbbell lateral raise — 3x12-15
+4. Machine hip thrust — 3x10-12
+5. Hip abductor + Hip adductor (SUPERSET) — 3x15 / 3x15
+6. Bent-over barbell row (overhand, upright torso) — 2x12
+
+Session C (default Friday):
+1. Standing barbell overhead press — 3x6-8
+2. Pull-ups or assisted pull-ups — 3x max/8
+3. Seated cable row (wide grip) — 3x10-12
+4. Hack squat — 3x10-12
+5. Cable reverse fly — 2x15
+6. Barbell upright row — 2x12
+
+Exercises NOT in Lauren's program (never suggest these): Romanian deadlift, barbell back squat, cable kickback, reverse pec deck, Bulgarian split squat, landmine row, goblet squat, rear delt pull-apart, lunges, any single-leg hip thrust variation.
+
+Onboarding (when no program exists yet):
+- Lauren's program is already defined above. Generate it using generate_program with the exact exercises, sets, and reps listed.
+- Set all target_weight_kg to null — weights will be logged from her first sessions.
+- Present a plain-language summary including the punishment rules.
+
+Communication style (THIS IS CRITICAL):
+- Keep every message SHORT. 1-3 sentences max. This is a chat, not an essay.
+- Ask ONE question at a time. Wait for Lauren's answer before moving on.
+- Never dump a wall of text. If you have multiple points, spread them across multiple exchanges.
+- During onboarding: ask each question in a separate message. Don't combine them.
+- When presenting the program: give a brief 2-3 sentence summary only. The full program details are shown visually in the Program tab — don't repeat them in chat. Say something like "Your 12-week program is ready. Check the Program tab for the full breakdown."
+- Use line breaks between distinct thoughts. No paragraphs.
+- Sound like a text message from a smart friend, not a formal document.
+
+What you never do:
+- Add filler encouragement Lauren didn't ask for
+- Pad responses with "great question" or "absolutely"
+- Give generic advice that ignores her logged data
+- Recommend she eat less or change her nutrition (out of scope)
+- Comment on Hyrox or walking days unless she brings them up
+- Log, schedule, or reference Hyrox in any program or workout plan
+- Write messages longer than 4 sentences
+- Ask multiple questions in one message
+
+CRITICAL RULES FOR ACTIONS AND PROGRAMS:
+
+1. Use the bloom_actions tool for app actions. NEVER write JSON, code blocks, or technical data in your text. The user only sees your text message.
+
+2. Only use generate_program when creating the FULL 12-week program from scratch (during onboarding or when Lauren asks for a complete rebuild). The program must include ALL 12 weeks, each with sessions and exercises.
+
+3. For SMALL changes (swap an exercise, add or remove an exercise, change a rep target): do NOT regenerate the entire program. Confirm the change with Lauren in plain text first — e.g. "Want me to swap cable rows for chest-supported rows in Session B?" — and once she says yes, apply it with one or more edit_workout actions. Each edit_workout action does ONE thing to ONE session: replace an exercise (swap_from + swap_to), add an exercise (add_exercise + optional reps), remove an exercise (remove_exercise), or change a rep target (exercise + reps). Saying you'll change it in text does NOT update the app — you MUST emit the edit_workout action(s). The change applies across all 12 weeks automatically.
+
+4. When you DO regenerate, include the COMPLETE 12-week program — all weeks, all sessions, all exercises with sets, reps, and target weights. Never send a partial program.
+
+5. NEVER write "bloom-actions", "bloom_actions", JSON, or code blocks in your text response.`;
+
+  // Build context block for the user message
+  // Build lift bests summary
+  const { liftBests = {} } = context;
+  const liftBestLines = Object.entries(liftBests)
+    .filter(([, v]) => v.weight > 0)
+    .map(([name, v]) => `${name}: ${v.weight}${unit} × ${v.reps} reps`)
+    .join(', ');
+
+  const contextBlock = [
+    `Current week: ${currentWeek ?? '?'} of 12`,
+    `Mesocycle: ${currentMesocycle ?? '?'} (${phase ?? '?'})`,
+    `Is deload week: ${isDeload ? 'yes' : 'no'}`,
+    `Lauren's current lift bests: ${liftBestLines || 'no data yet'}`,
+    `Sessions this week: ${thisWeekSessions.length > 0 ? JSON.stringify(thisWeekSessions) : 'none yet'}`,
+    `Last session data: ${lastSessionData ? JSON.stringify(lastSessionData) : 'none'}`,
+    `Plateau flags: ${plateauFlags.length > 0 ? JSON.stringify(plateauFlags) : 'none'}`,
+    `Missed sessions (last 28 days): ${missedSessionCount}${missedSessionDetails.length > 0 ? ' — ' + JSON.stringify(missedSessionDetails) : ''}`,
+    `Schedule: ${scheduleSummary}`,
+    `Workout names: ${workoutNames.length > 0 ? workoutNames.join(', ') : 'none'}`,
+    `Unit: ${unit}`,
+    `Lauren's preferences: 3x full body/week, NO squats/Bulgarians/deadlifts/lunges/single-leg hip thrusts. Shoulders are a priority. Goal: first unassisted pull-up this year (currently uses bands). Program starts May 25th.`,
+  ].join('\n');
+
+  const userContent = `CONTEXT:\n${contextBlock}\n\nUSER MESSAGE:\n${message}`;
+
+  // Build message history from fullHistory
   const messages = [];
-  for (const m of history) {
-    if (m.from === 'user') messages.push({ role: 'user', content: m.text });
-    else if (m.from === 'coach' && m.text && m.text !== '…') messages.push({ role: 'assistant', content: m.text });
+  for (const m of fullHistory) {
+    if (m.role === 'user') {
+      messages.push({ role: 'user', content: m.content });
+    } else if ((m.role === 'wren' || m.role === 'assistant') && m.content && m.content !== '…') {
+      messages.push({ role: 'assistant', content: m.content });
+    }
   }
-  messages.push({ role: 'user', content: message });
+  messages.push({ role: 'user', content: userContent });
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -80,10 +188,55 @@ When suggesting weight progressions, use small increments (5 lb for upper body, 
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 400,
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 16000,
         system: systemPrompt,
         messages,
+        tools: [
+          { type: 'web_search_20250305', name: 'web_search', max_uses: 3 },
+          {
+            name: 'bloom_actions',
+            description: 'Execute actions in the Bloom app. Use this tool whenever you need to generate a program, assign a punishment, flag a plateau, or modify workouts. ALWAYS use this tool instead of writing JSON in your text response.',
+            input_schema: {
+              type: 'object',
+              properties: {
+                actions: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      type: { type: 'string', description: 'Action type: generate_program, assign_punishment, flag_plateau, set_schedule, edit_workout' },
+                      program: { type: 'object', description: 'For generate_program: the full program object with weeks array' },
+                      description: { type: 'string', description: 'For assign_punishment: the punishment description' },
+                      exercise: { type: 'string', description: 'For flag_plateau: the exercise name. For edit_workout: the exercise whose reps you are changing (pair with reps).' },
+                      suggestion: { type: 'string', description: 'For flag_plateau: the suggestion' },
+                      session_label: { type: 'string', description: 'For edit_workout: which session to edit — "A", "B", or "C".' },
+                      swap_from: { type: 'string', description: 'For edit_workout: exercise name to replace.' },
+                      swap_to: { type: 'string', description: 'For edit_workout: exercise name to replace it with.' },
+                      add_exercise: { type: 'string', description: 'For edit_workout: name of an exercise to add to the session.' },
+                      remove_exercise: { type: 'string', description: 'For edit_workout: name of an exercise to remove from the session.' },
+                      reps: { type: 'string', description: 'For edit_workout: a rep range like "8-10" — used with add_exercise (target for the new exercise) or with exercise (new target for an existing exercise).' },
+                      assignments: {
+                        type: 'array',
+                        description: 'For set_schedule: which day each lifting session falls on this week. Include all three sessions.',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            session_label: { type: 'string', description: 'The session label: "A", "B", or "C"' },
+                            day: { type: 'string', description: 'Full weekday name, e.g. "Monday". Never "Saturday" (reserved for Hyrox).' },
+                          },
+                          required: ['session_label', 'day'],
+                        },
+                      },
+                    },
+                    required: ['type'],
+                  },
+                },
+              },
+              required: ['actions'],
+            },
+          },
+        ],
       }),
     });
 
@@ -94,8 +247,48 @@ When suggesting weight progressions, use small increments (5 lb for upper body, 
     }
 
     const data = await response.json();
-    const reply = data.content?.[0]?.text || 'Got it.';
-    res.status(200).json({ reply });
+    const contentBlocks = data.content || [];
+
+    // 1. Extract text reply
+    let reply = contentBlocks
+      .filter(b => b.type === 'text')
+      .map(b => b.text)
+      .join('\n')
+      .trim();
+
+    // 2. Extract actions from tool_use blocks (the reliable path)
+    let actions = [];
+    for (const block of contentBlocks) {
+      if (block.type === 'tool_use' && block.name === 'bloom_actions' && block.input?.actions) {
+        actions = block.input.actions;
+      }
+    }
+
+    // 3. Fallback: also check for code blocks in text (legacy path)
+    if (!actions.length && reply) {
+      const codeBlocks = reply.match(/```[a-z-]*\s*([\s\S]*?)```/g) || [];
+      for (const block of codeBlocks) {
+        if (actions.length) break;
+        const inner = block.replace(/```[a-z-]*\s*/, '').replace(/```$/, '').trim();
+        try {
+          const parsed = JSON.parse(inner);
+          const arr = Array.isArray(parsed) ? parsed : [parsed];
+          if (arr.length && arr[0]?.type) actions = arr;
+        } catch {}
+      }
+    }
+
+    // 4. Clean the reply — strip any code blocks, JSON, or action references
+    reply = reply.replace(/```[\s\S]*?```/g, '').trim();
+    reply = reply.replace(/\{[\s\S]{80,}\}/g, '').trim();
+    reply = reply.replace(/\[[\s\S]{80,}\]/g, '').trim();
+    reply = reply.replace(/bloom.actions/gi, '').trim();
+    reply = reply.split('\n').filter(line => !line.trim().match(/^["\[{]/)).join('\n').trim();
+    if (!reply) reply = actions.length
+      ? 'Your program is ready — tap Program above to see the full breakdown.'
+      : 'Got it.';
+
+    res.status(200).json({ reply, actions });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
