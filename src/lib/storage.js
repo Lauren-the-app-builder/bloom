@@ -120,6 +120,17 @@ export function canonicalSetsFor(name) {
   return TWO_SET_PATTERNS.some(p => p(name || '')) ? 2 : 3;
 }
 
+// Deload weeks cut volume ~40% (keep ~60% of the sets, minimum 1).
+export function deloadSets(baseSets) {
+  return Math.max(1, Math.round((Number(baseSets) || 0) * 0.6));
+}
+
+// Set count for an exercise in a given week, accounting for deload.
+export function setsForExercise(name, isDeload) {
+  const base = canonicalSetsFor(name);
+  return isDeload ? deloadSets(base) : base;
+}
+
 function fixSession(sess) {
   if (!sess || !Array.isArray(sess.exercises)) return sess;
   return {

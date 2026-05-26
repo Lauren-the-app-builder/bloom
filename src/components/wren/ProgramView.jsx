@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronRight, Sparkles } from 'lucide-react';
 import { c } from './tokens';
-import { getActiveProgram, canonicalSetsFor } from '../../lib/storage';
+import { getActiveProgram, setsForExercise } from '../../lib/storage';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 
 const MESO_LABELS = [
@@ -135,6 +135,11 @@ export default function ProgramView() {
                           margin: '4px 0 8px', padding: '12px 14px', borderRadius: 12,
                           background: c.paper, border: `1px solid ${c.line}`,
                         }}>
+                          {isDeloadWk && (
+                            <div style={{ fontSize: 11, fontWeight: 600, color: '#7040A0', background: '#ede4f7', borderRadius: 8, padding: '6px 10px', marginBottom: 10, lineHeight: 1.4 }}>
+                              🌙 Deload week — fewer sets and ~10% lighter loads. Recover and let your body adapt.
+                            </div>
+                          )}
                           {(Array.isArray(wk.sessions) ? wk.sessions : Object.entries(wk.sessions).map(([k, v]) => ({ label: k, ...v }))).map((sess, si) => {
                             const label = sess.label || sess.name || String.fromCharCode(65 + si); // A, B, C
                             return (
@@ -150,7 +155,7 @@ export default function ProgramView() {
                                   }}>
                                     <span>{ex.name || ex.exercise}</span>
                                     <span style={{ color: c.muted, fontSize: 11 }}>
-                                      {canonicalSetsFor(ex.name || ex.exercise)}x{ex.reps || '?'}{ex.weight ? ` @ ${ex.weight}` : ''}
+                                      {setsForExercise(ex.name || ex.exercise, isDeloadWk)}x{ex.reps || '?'}{ex.weight ? ` @ ${ex.weight}` : ''}
                                     </span>
                                   </div>
                                 ))}

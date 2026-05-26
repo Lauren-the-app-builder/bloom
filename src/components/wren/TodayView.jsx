@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Play, Leaf, Check, Sparkles, Heart, CalendarDays } from 'lucide-react';
 import { c } from './tokens';
-import { getActiveProgram, getSessions, canonicalSetsFor, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed } from '../../lib/storage';
+import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed } from '../../lib/storage';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Sunday'];
@@ -26,10 +26,7 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren }) {
   const isDeload = hasStarted && currentWeek > 0 && currentWeek % 4 === 0;
 
   // Deload weeks cut volume ~40% (≈60% of the sets, min 1) and load ~10%.
-  const setsFor = (name) => {
-    const base = canonicalSetsFor(name);
-    return isDeload ? Math.max(1, Math.round(base * 0.6)) : base;
-  };
+  const setsFor = (name) => setsForExercise(name, isDeload);
 
   const today = new Date();
   const dayName = today.toLocaleDateString('en-US', { weekday: 'long' });
