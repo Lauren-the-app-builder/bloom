@@ -1,5 +1,10 @@
 // Vercel serverless function — Wren the coach, backed by Claude.
 
+// Opus 4.7 with adaptive thinking plus a tool-use round-trip can take a while,
+// especially when generating a full 12-week program. Give it headroom past the
+// 10s default so generations don't get killed mid-response.
+export const config = { maxDuration: 60 };
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
@@ -179,8 +184,54 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
   }
   messages.push({ role: 'user', content: userContent });
 
-  try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const tools = [
+    { type: 'web_search_20250305', name: 'web_search', max_uses: 3 },
+    {
+      name: 'bloom_actions',
+      description: 'Execute actions in the Bloom app. Use this tool whenever you need to generate a program, assign a punishment, flag a plateau, set the weekly schedule, or modify workouts. ALWAYS use this tool instead of writing JSON in your text response.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          actions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                type: { type: 'string', description: 'Action type: generate_program, assign_punishment, flag_plateau, set_schedule, edit_workout' },
+                program: { type: 'object', description: 'For generate_program: the full program object with weeks array' },
+                description: { type: 'string', description: 'For assign_punishment: the punishment description' },
+                exercise: { type: 'string', description: 'For flag_plateau: the exercise name. For edit_workout: the exercise whose reps you are changing (pair with reps).' },
+                suggestion: { type: 'string', description: 'For flag_plateau: the suggestion' },
+                session_label: { type: 'string', description: 'For edit_workout: which session to edit — "A", "B", or "C".' },
+                swap_from: { type: 'string', description: 'For edit_workout: exercise name to replace.' },
+                swap_to: { type: 'string', description: 'For edit_workout: exercise name to replace it with.' },
+                add_exercise: { type: 'string', description: 'For edit_workout: name of an exercise to add to the session.' },
+                remove_exercise: { type: 'string', description: 'For edit_workout: name of an exercise to remove from the session.' },
+                reps: { type: 'string', description: 'For edit_workout: a rep range like "8-10" — used with add_exercise (target for the new exercise) or with exercise (new target for an existing exercise).' },
+                assignments: {
+                  type: 'array',
+                  description: 'For set_schedule: which day each lifting session falls on this week. Include all three sessions.',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      session_label: { type: 'string', description: 'The session label: "A", "B", or "C"' },
+                      day: { type: 'string', description: 'Full weekday name, e.g. "Monday". Never "Saturday" (reserved for Hyrox).' },
+                    },
+                    required: ['session_label', 'day'],
+                  },
+                },
+              },
+              required: ['type'],
+            },
+          },
+        },
+        required: ['actions'],
+      },
+    },
+  ];
+
+  const callClaude = async (msgs) => {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'x-api-key': key,
@@ -188,105 +239,75 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-opus-4-7',
         max_tokens: 16000,
-        system: systemPrompt,
-        messages,
-        tools: [
-          { type: 'web_search_20250305', name: 'web_search', max_uses: 3 },
-          {
-            name: 'bloom_actions',
-            description: 'Execute actions in the Bloom app. Use this tool whenever you need to generate a program, assign a punishment, flag a plateau, or modify workouts. ALWAYS use this tool instead of writing JSON in your text response.',
-            input_schema: {
-              type: 'object',
-              properties: {
-                actions: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      type: { type: 'string', description: 'Action type: generate_program, assign_punishment, flag_plateau, set_schedule, edit_workout' },
-                      program: { type: 'object', description: 'For generate_program: the full program object with weeks array' },
-                      description: { type: 'string', description: 'For assign_punishment: the punishment description' },
-                      exercise: { type: 'string', description: 'For flag_plateau: the exercise name. For edit_workout: the exercise whose reps you are changing (pair with reps).' },
-                      suggestion: { type: 'string', description: 'For flag_plateau: the suggestion' },
-                      session_label: { type: 'string', description: 'For edit_workout: which session to edit — "A", "B", or "C".' },
-                      swap_from: { type: 'string', description: 'For edit_workout: exercise name to replace.' },
-                      swap_to: { type: 'string', description: 'For edit_workout: exercise name to replace it with.' },
-                      add_exercise: { type: 'string', description: 'For edit_workout: name of an exercise to add to the session.' },
-                      remove_exercise: { type: 'string', description: 'For edit_workout: name of an exercise to remove from the session.' },
-                      reps: { type: 'string', description: 'For edit_workout: a rep range like "8-10" — used with add_exercise (target for the new exercise) or with exercise (new target for an existing exercise).' },
-                      assignments: {
-                        type: 'array',
-                        description: 'For set_schedule: which day each lifting session falls on this week. Include all three sessions.',
-                        items: {
-                          type: 'object',
-                          properties: {
-                            session_label: { type: 'string', description: 'The session label: "A", "B", or "C"' },
-                            day: { type: 'string', description: 'Full weekday name, e.g. "Monday". Never "Saturday" (reserved for Hyrox).' },
-                          },
-                          required: ['session_label', 'day'],
-                        },
-                      },
-                    },
-                    required: ['type'],
-                  },
-                },
-              },
-              required: ['actions'],
-            },
-          },
-        ],
+        // Adaptive thinking: Wren reasons hard on program design, stays fast on chat.
+        thinking: { type: 'adaptive' },
+        output_config: { effort: 'medium' },
+        // Cache the large, static system prompt + tool defs across turns.
+        system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
+        messages: msgs,
+        tools,
       }),
     });
+    if (!resp.ok) throw new Error('Claude API error: ' + (await resp.text()));
+    return resp.json();
+  };
 
-    if (!response.ok) {
-      const err = await response.text();
-      res.status(500).json({ error: 'Claude API error: ' + err });
-      return;
-    }
-
-    const data = await response.json();
-    const contentBlocks = data.content || [];
-
-    // 1. Extract text reply
-    let reply = contentBlocks
-      .filter(b => b.type === 'text')
-      .map(b => b.text)
-      .join('\n')
-      .trim();
-
-    // 2. Extract actions from tool_use blocks (the reliable path)
+  try {
+    // Agentic loop: when Wren emits a bloom_actions tool call, the API stops
+    // with stop_reason "tool_use" and (usually) no text. We must return a
+    // tool_result and call again so she produces her actual reply. Without
+    // this round-trip every action turn fell back to a canned message.
+    const convo = [...messages];
+    let reply = '';
     let actions = [];
-    for (const block of contentBlocks) {
-      if (block.type === 'tool_use' && block.name === 'bloom_actions' && block.input?.actions) {
-        actions = block.input.actions;
+    let stopReason = 'end_turn';
+
+    for (let turn = 0; turn < 5; turn++) {
+      const data = await callClaude(convo);
+      const blocks = data.content || [];
+      stopReason = data.stop_reason;
+
+      const text = blocks.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+      if (text) reply = text;
+
+      const toolUses = blocks.filter(b => b.type === 'tool_use' && b.name === 'bloom_actions');
+      for (const tu of toolUses) {
+        if (tu.input?.actions) actions = actions.concat(tu.input.actions);
       }
+
+      if (stopReason === 'tool_use' && toolUses.length) {
+        // Acknowledge the client-side actions and let Wren respond in words.
+        convo.push({ role: 'assistant', content: blocks });
+        convo.push({
+          role: 'user',
+          content: toolUses.map(tu => ({
+            type: 'tool_result',
+            tool_use_id: tu.id,
+            content: 'Done — applied in the app.',
+          })),
+        });
+        continue;
+      }
+
+      if (stopReason === 'pause_turn') {
+        // Server-side tool (web_search) hit its loop cap — resume.
+        convo.push({ role: 'assistant', content: blocks });
+        continue;
+      }
+
+      break; // end_turn (or anything terminal): we have the reply.
     }
 
-    // 3. Fallback: also check for code blocks in text (legacy path)
-    if (!actions.length && reply) {
-      const codeBlocks = reply.match(/```[a-z-]*\s*([\s\S]*?)```/g) || [];
-      for (const block of codeBlocks) {
-        if (actions.length) break;
-        const inner = block.replace(/```[a-z-]*\s*/, '').replace(/```$/, '').trim();
-        try {
-          const parsed = JSON.parse(inner);
-          const arr = Array.isArray(parsed) ? parsed : [parsed];
-          if (arr.length && arr[0]?.type) actions = arr;
-        } catch {}
-      }
+    // Light cleanup — strip any stray code blocks / action mentions.
+    reply = reply.replace(/```[\s\S]*?```/g, '').replace(/bloom.actions/gi, '').trim();
+    if (!reply) {
+      const madeProgram = actions.some(a => a.type === 'generate_program');
+      reply = madeProgram
+        ? 'Your program is ready — tap Program above to see the full breakdown.'
+        : actions.length ? 'Done — updated in the app.' : 'Got it.';
     }
-
-    // 4. Clean the reply — strip any code blocks, JSON, or action references
-    reply = reply.replace(/```[\s\S]*?```/g, '').trim();
-    reply = reply.replace(/\{[\s\S]{80,}\}/g, '').trim();
-    reply = reply.replace(/\[[\s\S]{80,}\]/g, '').trim();
-    reply = reply.replace(/bloom.actions/gi, '').trim();
-    reply = reply.split('\n').filter(line => !line.trim().match(/^["\[{]/)).join('\n').trim();
-    if (!reply) reply = actions.length
-      ? 'Your program is ready — tap Program above to see the full breakdown.'
-      : 'Got it.';
 
     res.status(200).json({ reply, actions });
   } catch (e) {
