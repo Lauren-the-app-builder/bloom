@@ -1645,13 +1645,26 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
   const finishWorkout = () => {
     // Save session to history before closing
     const exMap = {};
+    // Per-set "on track" status vs the set's target (true = hit, false = missed,
+    // null = no target to judge against).
+    const perSetStatus = {};
     sets.forEach(ex => {
       // Record any set that's marked done and has at least reps or weight.
       // Treat missing values as 0 (e.g. bodyweight exercises have weight=0).
-      const done = ex.rows
-        .filter(r => r.done && (r.reps !== "" || r.weight !== ""))
-        .map(r => ({ reps: Number(r.reps) || 0, weight: Number(r.weight) || 0 }));
-      if (done.length) exMap[ex.name] = done;
+      const done = [];
+      const statuses = [];
+      for (const r of ex.rows) {
+        if (!(r.done && (r.reps !== "" || r.weight !== ""))) continue;
+        const reps = Number(r.reps) || 0;
+        const weight = Number(r.weight) || 0;
+        done.push({ reps, weight });
+        const tReps = Number(r.targetReps) || 0;
+        const tWeight = Number(r.targetWeight) || 0;
+        if (tReps && tWeight) statuses.push(weight >= tWeight && reps >= tReps);
+        else if (tReps) statuses.push(reps >= tReps);
+        else statuses.push(null); // no target — can't judge
+      }
+      if (done.length) { exMap[ex.name] = done; perSetStatus[ex.name] = statuses; }
     });
     if (Object.keys(exMap).length === 0) {
       // Nothing logged → just close, no summary screen.
@@ -1662,22 +1675,60 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
     // Compute summary stats + per-exercise progression vs last session.
     const totalSets = Object.values(exMap).reduce((n, arr) => n + arr.length, 0);
     const exNames = Object.keys(exMap);
-    // Compare each exercise to last session to find progressions.
+    // History (incl. today, already recorded above) for stall detection.
+    const histAll = getSessions()
+      .filter(s => !(s.workoutName || '').includes('(past entry)'))
+      .sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
+    const maxW = (setsArr) => Math.max(...setsArr.map(x => Number(x.weight) || 0));
+    const sumReps = (setsArr) => setsArr.reduce((n, x) => n + (Number(x.reps) || 0), 0);
+    // Same definition as Wren's plateau detector: last 3 sessions, same top
+    // weight, no total-rep gain.
+    const isStalled = (name) => {
+      const recent = histAll.filter(s => s.exercises?.[name]?.length).slice(0, 3);
+      if (recent.length < 3) return false;
+      const w0 = maxW(recent[0].exercises[name]);
+      const sameWeight = recent.every(s => maxW(s.exercises[name]) === w0);
+      return sameWeight && sumReps(recent[0].exercises[name]) <= sumReps(recent[2].exercises[name]);
+    };
+
+    // Compare each exercise to last session, judge progress, and recommend.
     const progressions = [];
     for (const [name, todaySets] of Object.entries(exMap)) {
       const lastEx = lastExForName(name);
-      if (!lastEx || !lastEx.length) { progressions.push({ name, status: "new" }); continue; }
+      const isLower = /barbell|squat|deadlift|hip thrust|leg press|rdl/i.test(name);
+      const inc = incrementFor(unit, isLower);
+      const tTop = Number(targets[name]) || 0;
       const todayMaxWeight = Math.max(...todaySets.map((s) => s.weight));
-      const lastMaxWeight = Math.max(...lastEx.map((s) => s.weight));
-      const todayMaxReps = Math.max(...todaySets.map((s) => s.reps));
-      const lastMaxReps = Math.max(...lastEx.map((s) => s.reps));
-      if (todayMaxWeight > lastMaxWeight) {
-        progressions.push({ name, status: "weight_up", detail: `${lastMaxWeight} → ${todayMaxWeight}${unit}` });
-      } else if (todayMaxReps > lastMaxReps && todayMaxWeight >= lastMaxWeight) {
-        progressions.push({ name, status: "reps_up", detail: `${lastMaxReps} → ${todayMaxReps} reps` });
+      const topSets = todaySets.filter((s) => s.weight === todayMaxWeight);
+      const allHit = tTop > 0 && topSets.length > 0 && topSets.every((s) => s.reps >= tTop);
+      const setStatuses = perSetStatus[name] || [];
+      const stalled = isStalled(name);
+
+      let status, detail;
+      if (!lastEx || !lastEx.length) {
+        status = "new";
       } else {
-        progressions.push({ name, status: "same" });
+        const lastMaxWeight = Math.max(...lastEx.map((s) => s.weight));
+        const lastMaxReps = Math.max(...lastEx.map((s) => s.reps));
+        const todayMaxReps = Math.max(...todaySets.map((s) => s.reps));
+        if (todayMaxWeight > lastMaxWeight) { status = "weight_up"; detail = `${lastMaxWeight} → ${todayMaxWeight}${unit}`; }
+        else if (todayMaxReps > lastMaxReps && todayMaxWeight >= lastMaxWeight) { status = "reps_up"; detail = `${lastMaxReps} → ${todayMaxReps} reps`; }
+        else status = "same";
       }
+
+      // On track if you progressed, logged a first session, or maxed the rep
+      // range (ready to go up). A stall always counts as off track.
+      const onTrack = !stalled && (status === "weight_up" || status === "reps_up" || status === "new" || allHit);
+
+      let reco;
+      if (stalled) reco = `Stalled 3 sessions at ${todayMaxWeight}${unit}. Try a deload (~10% lighter) or ask Wren to swap it.`;
+      else if (status === "new") reco = "First time logged — aim to beat this next session.";
+      else if (status === "weight_up") reco = `Up to ${todayMaxWeight}${unit}. Settle in and aim for ${tTop || "the top of your range"} reps on every set.`;
+      else if (allHit) reco = `You maxed the rep range — add ${inc}${unit} next time.`;
+      else if (status === "reps_up") reco = `More reps at ${todayMaxWeight}${unit}. Keep adding reps, then bump the weight.`;
+      else reco = `Stay at ${todayMaxWeight}${unit} and add a rep per set next time.`;
+
+      progressions.push({ name, status, detail, sets: setStatuses, onTrack, reco });
     }
     // PR detection: compare today's best set per exercise against ALL historical sessions.
     const allSessions = getSessions();
@@ -2052,29 +2103,28 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
               </div>
             </div>
           )}
-          {/* Per-exercise progression */}
+          {/* Per-exercise breakdown: per-set ✓/✗ + what to do next time */}
           <div style={{ width: "100%", background: c.white, border: `1px solid ${c.line}`, borderRadius: 16, padding: 16, marginBottom: 20 }}>
-            <p style={{ fontSize: 11, fontWeight: 700, color: c.muted, margin: 0, letterSpacing: 0.5 }}>PROGRESSION</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: c.muted, margin: 0, letterSpacing: 0.5 }}>HOW IT WENT</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
               {(finishSummary.progressions || []).map((p, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <p style={{ fontSize: 13, fontWeight: 600, margin: 0, color: c.charcoal, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</p>
-                  {p.status === "weight_up" && (
-                    <span style={{ fontSize: 11, fontWeight: 700, color: "#4a8a5a", background: "#e6f4ea", padding: "2px 8px", borderRadius: 999 }}>
-                      ↑ {p.detail}
-                    </span>
-                  )}
-                  {p.status === "reps_up" && (
-                    <span style={{ fontSize: 11, fontWeight: 700, color: "#4a8a5a", background: "#e6f4ea", padding: "2px 8px", borderRadius: 999 }}>
-                      ↑ {p.detail}
-                    </span>
-                  )}
-                  {p.status === "new" && (
-                    <span style={{ fontSize: 11, fontWeight: 700, color: c.rosedeep, background: c.blushLight, padding: "2px 8px", borderRadius: 999 }}>New</span>
-                  )}
-                  {p.status === "same" && (
-                    <span style={{ fontSize: 11, fontWeight: 600, color: c.muted, padding: "2px 8px" }}>—</span>
-                  )}
+                <div key={i} style={{ borderLeft: `3px solid ${p.onTrack ? "#4a8a5a" : "#d98a3d"}`, paddingLeft: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                    <p style={{ fontSize: 13, fontWeight: 600, margin: 0, color: c.charcoal, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</p>
+                    <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                      {(p.sets && p.sets.length ? p.sets : [null]).map((ok, j) => (
+                        <span key={j} title={`Set ${j + 1}`} style={{
+                          width: 18, height: 18, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                          background: ok === true ? "#e6f4ea" : ok === false ? "#fbe7da" : c.cream,
+                          color: ok === true ? "#4a8a5a" : ok === false ? "#d98a3d" : c.muted,
+                          fontSize: 11, fontWeight: 800,
+                        }}>
+                          {ok === true ? "✓" : ok === false ? "✕" : "·"}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <p style={{ fontSize: 11, color: c.muted, margin: "4px 0 0", lineHeight: 1.45 }}>{p.reco}</p>
                 </div>
               ))}
             </div>
