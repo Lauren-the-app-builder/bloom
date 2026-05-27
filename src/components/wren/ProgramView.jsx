@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronRight, Sparkles } from 'lucide-react';
 import { c } from './tokens';
-import { getActiveProgram, setsForExercise } from '../../lib/storage';
+import { getActiveProgram, setsForExercise, getSessions, load } from '../../lib/storage';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 
 const MESO_LABELS = [
@@ -27,9 +27,34 @@ export default function ProgramView() {
   const rawProgram = getActiveProgram();
   // The program data lives inside program_json (from Supabase schema).
   const program = rawProgram?.program_json || rawProgram || null;
-  const { week: currentWeek } = getCurrentWeekAndMesocycle(program);
+  const { week: currentWeek, startDate } = getCurrentWeekAndMesocycle(program);
   const [expandedWeek, setExpandedWeek] = useState(null);
   const [collapsedMeso, setCollapsedMeso] = useState({});
+
+  const unit = load('unit', 'kg');
+  const sessionsLog = getSessions().filter(s => !(s.workoutName || '').includes('(past entry)'));
+  // The logged session (if any) for a given program week + session label,
+  // matched by "Session X" name within that week's 7-day window.
+  const loggedFor = (weekNum, label) => {
+    if (!startDate) return null;
+    const start = startDate.getTime() + (weekNum - 1) * 7 * 86400000;
+    const end = start + 7 * 86400000;
+    const matches = sessionsLog.filter(s => {
+      const m = /^Session\s+([A-Za-z])/.exec(s.workoutName || '');
+      return m && m[1].toUpperCase() === String(label).toUpperCase()
+        && Number(s.finishedAt) >= start && Number(s.finishedAt) < end;
+    });
+    if (!matches.length) return null;
+    return matches.sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0))[0];
+  };
+  // Best logged set (top weight, then most reps) for an exercise in a session.
+  const topSet = (loggedSession, exName) => {
+    const setsArr = loggedSession?.exercises?.[exName];
+    if (!setsArr || !setsArr.length) return null;
+    return setsArr.reduce((a, b) =>
+      (Number(b.weight) > Number(a.weight) || (Number(b.weight) === Number(a.weight) && Number(b.reps) > Number(a.reps))) ? b : a,
+      setsArr[0]);
+  };
 
   if (!program || !program.weeks?.length) {
     return (
@@ -142,23 +167,37 @@ export default function ProgramView() {
                           )}
                           {(Array.isArray(wk.sessions) ? wk.sessions : Object.entries(wk.sessions).map(([k, v]) => ({ label: k, ...v }))).map((sess, si) => {
                             const label = sess.label || sess.name || String.fromCharCode(65 + si); // A, B, C
+                            const logged = loggedFor(wNum, label);
                             return (
                               <div key={si} style={{ marginBottom: si < (wk.sessions.length || Object.keys(wk.sessions).length) - 1 ? 10 : 0 }}>
-                                <div style={{ fontSize: 12, fontWeight: 700, color: c.charcoal, marginBottom: 4 }}>
-                                  Session {label}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                                  <span style={{ fontSize: 12, fontWeight: 700, color: c.charcoal }}>Session {label}</span>
+                                  {logged && (
+                                    <span style={{ fontSize: 9, fontWeight: 700, color: '#2e7d4a', background: '#e6f5ea', padding: '1px 7px', borderRadius: 999 }}>✓ Done</span>
+                                  )}
                                 </div>
-                                {(sess.exercises || []).map((ex, ei) => (
-                                  <div key={ei} style={{
-                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                    padding: '4px 0', fontSize: 12, color: c.charcoal,
-                                    borderBottom: ei < sess.exercises.length - 1 ? `1px solid ${c.line}` : 'none',
-                                  }}>
-                                    <span>{ex.name || ex.exercise}</span>
-                                    <span style={{ color: c.muted, fontSize: 11 }}>
-                                      {setsForExercise(ex.name || ex.exercise, isDeloadWk)}x{ex.reps || '?'}{ex.weight ? ` @ ${ex.weight}` : ''}
-                                    </span>
-                                  </div>
-                                ))}
+                                {(sess.exercises || []).map((ex, ei) => {
+                                  const exName = ex.name || ex.exercise;
+                                  const ts = logged ? topSet(logged, exName) : null;
+                                  return (
+                                    <div key={ei} style={{
+                                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                      padding: '4px 0', fontSize: 12, color: c.charcoal,
+                                      borderBottom: ei < sess.exercises.length - 1 ? `1px solid ${c.line}` : 'none',
+                                    }}>
+                                      <span>{exName}</span>
+                                      {ts ? (
+                                        <span style={{ color: '#2e7d4a', fontSize: 11, fontWeight: 700 }}>
+                                          {ts.weight}{unit} × {ts.reps}
+                                        </span>
+                                      ) : (
+                                        <span style={{ color: c.muted, fontSize: 11 }}>
+                                          {setsForExercise(exName, isDeloadWk)}x{ex.reps || '?'}{ex.weight ? ` @ ${ex.weight}` : ''}
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })}
                               </div>
                             );
                           })}
