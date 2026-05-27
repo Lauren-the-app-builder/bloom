@@ -185,7 +185,7 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
   messages.push({ role: 'user', content: userContent });
 
   const tools = [
-    { type: 'web_search_20250305', name: 'web_search', max_uses: 3 },
+    { type: 'web_search_20260209', name: 'web_search', max_uses: 3 },
     {
       name: 'bloom_actions',
       description: 'Execute actions in the Bloom app. Use this tool whenever you need to generate a program, assign a punishment, flag a plateau, set the weekly schedule, or modify workouts. ALWAYS use this tool instead of writing JSON in your text response.',
