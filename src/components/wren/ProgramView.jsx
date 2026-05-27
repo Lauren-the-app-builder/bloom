@@ -47,13 +47,10 @@ export default function ProgramView() {
     if (!matches.length) return null;
     return matches.sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0))[0];
   };
-  // Best logged set (top weight, then most reps) for an exercise in a session.
-  const topSet = (loggedSession, exName) => {
+  // All logged sets for an exercise in a session (in the order performed).
+  const loggedSets = (loggedSession, exName) => {
     const setsArr = loggedSession?.exercises?.[exName];
-    if (!setsArr || !setsArr.length) return null;
-    return setsArr.reduce((a, b) =>
-      (Number(b.weight) > Number(a.weight) || (Number(b.weight) === Number(a.weight) && Number(b.reps) > Number(a.reps))) ? b : a,
-      setsArr[0]);
+    return setsArr && setsArr.length ? setsArr : null;
   };
 
   if (!program || !program.weeks?.length) {
@@ -178,22 +175,33 @@ export default function ProgramView() {
                                 </div>
                                 {(sess.exercises || []).map((ex, ei) => {
                                   const exName = ex.name || ex.exercise;
-                                  const ts = logged ? topSet(logged, exName) : null;
+                                  const done = logged ? loggedSets(logged, exName) : null;
                                   return (
                                     <div key={ei} style={{
-                                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                      padding: '4px 0', fontSize: 12, color: c.charcoal,
+                                      padding: '5px 0', fontSize: 12, color: c.charcoal,
                                       borderBottom: ei < sess.exercises.length - 1 ? `1px solid ${c.line}` : 'none',
                                     }}>
-                                      <span>{exName}</span>
-                                      {ts ? (
-                                        <span style={{ color: '#2e7d4a', fontSize: 11, fontWeight: 700 }}>
-                                          {ts.weight}{unit} × {ts.reps}
-                                        </span>
+                                      {done ? (
+                                        <>
+                                          <span>{exName}</span>
+                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                                            {done.map((s, j) => (
+                                              <span key={j} style={{
+                                                fontSize: 10, fontWeight: 700, color: '#2e7d4a',
+                                                background: '#e6f5ea', padding: '2px 7px', borderRadius: 999,
+                                              }}>
+                                                {s.weight}{unit} × {s.reps}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </>
                                       ) : (
-                                        <span style={{ color: c.muted, fontSize: 11 }}>
-                                          {setsForExercise(exName, isDeloadWk)}x{ex.reps || '?'}{ex.weight ? ` @ ${ex.weight}` : ''}
-                                        </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                          <span>{exName}</span>
+                                          <span style={{ color: c.muted, fontSize: 11 }}>
+                                            {setsForExercise(exName, isDeloadWk)}x{ex.reps || '?'}{ex.weight ? ` @ ${ex.weight}` : ''}
+                                          </span>
+                                        </div>
                                       )}
                                     </div>
                                   );
