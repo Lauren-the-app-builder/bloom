@@ -426,7 +426,9 @@ export default function BloomApp() {
     <div style={{
       position: "fixed", top: 0, bottom: 0, left: "50%", transform: "translateX(-50%)",
       width: "100%", maxWidth: 430,
-      background: c.cream, fontFamily: "'Inter', system-ui, sans-serif", color: c.charcoal,
+      // Hot pink background on the Today tab; other tabs keep the cream.
+      background: tab === "home" ? "#FF69B4" : c.cream,
+      fontFamily: "'Inter', system-ui, sans-serif", color: c.charcoal,
       display: "flex", flexDirection: "column", overflow: "hidden",
     }}>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
