@@ -46,7 +46,7 @@ import {
   Link2,
   Link2Off,
 } from "lucide-react";
-import { useLocalState, recordSession, getSessions, getLastSession, updateSession, deleteSession, load, save, getActiveProgram, getMissedSessions } from "./lib/storage";
+import { useLocalState, recordSession, getSessions, getLastSession, updateSession, deleteSession, load, save, getActiveProgram, getMissedSessions, ensureSessionAOrder } from "./lib/storage";
 import { supabase, isSupabaseConfigured } from "./lib/supabase";
 import { subscribeToPush, scheduleRestPush, cancelRestPush } from "./lib/push";
 import WrenView from "./components/wren/WrenView";
@@ -218,6 +218,24 @@ const FOCUS_LIFT = {
 // ---------- seed PRs ----------
 const SEED_PRS = [];
 
+// ---------- rest-end phrase library ----------
+// Spoken when the inter-set rest timer runs out (unless a custom voice
+// recording is set, which always wins). Selected one is stored at
+// localStorage["bloom:restPhrase"].
+const REST_PHRASES = [
+  "Next set, bitch!",
+  "Let's go, get up.",
+  "Up. Move it.",
+  "You got this.",
+  "One more set.",
+  "Bring it.",
+  "Back to work.",
+  "Time's up — lift.",
+  "Stand up, queen.",
+  "Make it count.",
+];
+const DEFAULT_REST_PHRASE = REST_PHRASES[0];
+
 // ---------- seed last sessions (for "last time" recall) ----------
 const LAST_SESSIONS = {
   "Glute Focus": {
@@ -243,6 +261,26 @@ function estimateMinutes(workout, sessions) {
 // ---------- main ----------
 export default function BloomApp() {
   const [tab, setTab] = useState("home");
+  // One-time idempotent reorder for older programs that had cable face pull
+  // before lat pulldown in Session A. Also re-runs after a sync pulls a fresh
+  // program from the server.
+  useEffect(() => {
+    ensureSessionAOrder();
+    const onSynced = () => { ensureSessionAOrder(); };
+    window.addEventListener("bloom:synced", onSynced);
+    return () => window.removeEventListener("bloom:synced", onSynced);
+  }, []);
+
+  // iOS 17+: setting the audio session to "ambient" lets the rest-timer beep
+  // and TTS mix with whatever music the user is already playing instead of
+  // pausing it. Silently noops on browsers that don't support it.
+  useEffect(() => {
+    try {
+      if (typeof navigator !== "undefined" && navigator.audioSession) {
+        navigator.audioSession.type = "ambient";
+      }
+    } catch {}
+  }, []);
   const [myWorkouts, setMyWorkouts] = useLocalState("myWorkouts", [
     { id: "w1", name: "Glute Focus", exercises: ["Hip Thrust", "Romanian Deadlift", "Bulgarian Split Squat"] },
     { id: "w2", name: "Push Day", exercises: ["DB Bench Press", "Incline DB Press", "Lateral Raise"] },
@@ -1245,7 +1283,13 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
         myWorkouts: [workout],
         schedule: {},
         sessions: getSessions(),
-        history: coachMsgs.slice(-6),
+        // Pass mid-workout chat history in the format /api/wren expects so
+        // Wren has memory of the conversation instead of restarting each turn.
+        fullHistory: coachMsgs
+          .filter(m => m.text && m.text !== "…")
+          .slice(-8)
+          .map(m => ({ role: m.from === "user" ? "user" : "assistant", content: m.text })),
+        unit,
       }, true);
       applyMidWorkoutActions(actions);
       setCoachMsgs(ms => {
@@ -1439,6 +1483,17 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
   // Custom recorded voice (stored as base64 data URL in localStorage).
   const VOICE_KEY = "bloom:restVoice";
   const [hasCustomVoice, setHasCustomVoice] = useState(() => !!localStorage.getItem(VOICE_KEY));
+  const [restPhrase, setRestPhrase] = useState(() => localStorage.getItem("bloom:restPhrase") || DEFAULT_REST_PHRASE);
+  // In-workout bug notes — collected locally, emailed on demand.
+  const [showBugReport, setShowBugReport] = useState(false);
+  const [bugDraft, setBugDraft] = useState("");
+  const [bugNotes, setBugNotes] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("bloom:bugNotes") || "[]"); } catch { return []; }
+  });
+  const persistBugNotes = (next) => {
+    setBugNotes(next);
+    try { localStorage.setItem("bloom:bugNotes", JSON.stringify(next)); } catch {}
+  };
   const [isRecording, setIsRecording] = useState(false);
   const recorderRef = useRef(null);
 
@@ -1478,7 +1533,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
 
   // Play custom voice OR fallback to TTS + beeps.
   const playRestDone = () => {
-    const phrase = "Next set, bitch!";
+    const phrase = localStorage.getItem("bloom:restPhrase") || DEFAULT_REST_PHRASE;
     const customUrl = localStorage.getItem(VOICE_KEY);
     // 1. Play custom recorded voice if available, otherwise TTS.
     if (customUrl) {
@@ -1701,7 +1756,10 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
       const todayMaxWeight = Math.max(...todaySets.map((s) => s.weight));
       const topSets = todaySets.filter((s) => s.weight === todayMaxWeight);
       const allHit = tTop > 0 && topSets.length > 0 && topSets.every((s) => s.reps >= tTop);
-      const setStatuses = perSetStatus[name] || [];
+      const noHistory = !lastEx || !lastEx.length;
+      // First-time exercise: there's no target to judge against, so per-set
+      // marks should be neutral rather than guessed from the rep target alone.
+      const setStatuses = noHistory ? (perSetStatus[name] || []).map(() => null) : (perSetStatus[name] || []);
       const stalled = isStalled(name);
 
       let status, detail;
@@ -1722,7 +1780,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
 
       let reco;
       if (stalled) reco = `Stalled 3 sessions at ${todayMaxWeight}${unit}. Try a deload (~10% lighter) or ask Wren to swap it.`;
-      else if (status === "new") reco = "First time logged — aim to beat this next session.";
+      else if (status === "new") reco = `First time logged — next session, start at ${todayMaxWeight}${unit} as your working weight.`;
       else if (status === "weight_up") reco = `Up to ${todayMaxWeight}${unit}. Settle in and aim for ${tTop || "the top of your range"} reps on every set.`;
       else if (allHit) reco = `You maxed the rep range — add ${inc}${unit} next time.`;
       else if (status === "reps_up") reco = `More reps at ${todayMaxWeight}${unit}. Keep adding reps, then bump the weight.`;
@@ -1785,6 +1843,14 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
           <button onClick={finishWorkout} style={{ background: c.rosedeep, color: "white", border: "none", padding: "8px 16px", borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Finish</button>
         </div>
         <p style={{ fontSize: 16, fontWeight: 600, margin: "10px 0 0", textAlign: "center" }}>{workout.name}</p>
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 6 }}>
+          <button
+            onClick={() => setShowBugReport(true)}
+            style={{ background: "none", border: "none", color: c.muted, fontSize: 11, cursor: "pointer", padding: "2px 6px", display: "flex", alignItems: "center", gap: 4 }}
+          >
+            🐞 Report a bug{bugNotes.length > 0 ? ` · ${bugNotes.length}` : ""}
+          </button>
+        </div>
       </div>
 
       {/* deload note + coach button */}
@@ -1904,7 +1970,12 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
                       }}
                       style={{ background: c.blushLight, border: "none", borderRadius: 999, padding: "2px 8px", fontSize: 10, fontWeight: 600, color: c.rosedeep, cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}
                     >
-                      <Timer size={10} /> {((liveRests[ex.name] || exData?.restSec || 90) / 60).toFixed(liveRests[ex.name] % 60 === 0 || !liveRests[ex.name] ? 0 : 1)}m
+                      <Timer size={10} /> {(() => {
+                        const sec = liveRests[ex.name] || exData?.restSec || 90;
+                        const m = Math.floor(sec / 60);
+                        const r = sec % 60;
+                        return r === 0 ? `${m}m` : `${m}:${String(r).padStart(2, "0")}`;
+                      })()}
                     </button>
                   </div>
                 </div>
@@ -2172,6 +2243,101 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
               <button onClick={clearRecording} style={{ ...timerBtn, background: "rgba(255,255,255,0.15)" }}>
                 <X size={12} />
               </button>
+            )}
+          </div>
+          {/* Rest-end phrase picker (used when no custom voice recording is set) */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+            <span style={{ fontSize: 10, opacity: 0.7, letterSpacing: 0.5, flexShrink: 0 }}>SAY</span>
+            <select
+              value={restPhrase}
+              onChange={(e) => {
+                const v = e.target.value;
+                setRestPhrase(v);
+                localStorage.setItem("bloom:restPhrase", v);
+              }}
+              disabled={hasCustomVoice}
+              style={{
+                flex: 1, background: "rgba(255,255,255,0.15)", color: "white",
+                border: "1px solid rgba(255,255,255,0.2)", borderRadius: 10,
+                padding: "6px 8px", fontSize: 12, fontFamily: "inherit",
+                opacity: hasCustomVoice ? 0.4 : 1,
+              }}
+            >
+              {REST_PHRASES.map((p) => (
+                <option key={p} value={p} style={{ color: c.charcoal }}>{p}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* bug report modal */}
+      {showBugReport && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 200 }} onClick={() => setShowBugReport(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: c.cream, width: "100%", maxWidth: 430, borderRadius: "28px 28px 0 0", padding: 24, maxHeight: "85vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>App bugs</h2>
+              <button onClick={() => setShowBugReport(false)} style={iconBtn}><X size={18} /></button>
+            </div>
+            <p style={{ fontSize: 12, color: c.muted, margin: "0 0 14px" }}>Jot anything weird you spot. Hit Email when you want to send the list to yourself.</p>
+
+            <textarea
+              value={bugDraft}
+              onChange={(e) => setBugDraft(e.target.value)}
+              placeholder="Describe the issue..."
+              rows={3}
+              style={{ width: "100%", boxSizing: "border-box", padding: 12, borderRadius: 12, border: `1px solid ${c.line}`, background: "white", fontSize: 14, fontFamily: "inherit", resize: "vertical" }}
+            />
+            <button
+              onClick={() => {
+                const text = bugDraft.trim();
+                if (!text) return;
+                persistBugNotes([...bugNotes, { ts: Date.now(), text, workout: workout.name }]);
+                setBugDraft("");
+              }}
+              disabled={!bugDraft.trim()}
+              style={{ width: "100%", marginTop: 8, padding: 12, borderRadius: 12, border: "none", cursor: bugDraft.trim() ? "pointer" : "default", background: bugDraft.trim() ? c.charcoal : c.line, color: "white", fontSize: 14, fontWeight: 600 }}
+            >
+              Add to list
+            </button>
+
+            {bugNotes.length > 0 && (
+              <div style={{ marginTop: 18 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: c.muted, letterSpacing: 0.5, margin: "0 0 8px" }}>SAVED · {bugNotes.length}</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {bugNotes.map((n, i) => (
+                    <div key={i} style={{ background: "white", borderRadius: 12, padding: 12, border: `1px solid ${c.line}`, display: "flex", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: 10, color: c.muted, margin: 0 }}>{new Date(n.ts).toLocaleString()} · {n.workout || "(no workout)"}</p>
+                        <p style={{ fontSize: 13, color: c.charcoal, margin: "2px 0 0", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{n.text}</p>
+                      </div>
+                      <button
+                        onClick={() => persistBugNotes(bugNotes.filter((_, j) => j !== i))}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: c.muted, padding: 4, flexShrink: 0 }}
+                        aria-label="Remove"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                  <a
+                    href={`mailto:ldunmore92@gmail.com?subject=${encodeURIComponent("Bloom app bugs")}&body=${encodeURIComponent(
+                      bugNotes.map((n) => `• ${new Date(n.ts).toLocaleString()} · ${n.workout || "(no workout)"}\n${n.text}`).join("\n\n")
+                    )}`}
+                    style={{ flex: 1, textDecoration: "none", textAlign: "center", padding: 12, borderRadius: 12, background: c.rosedeep, color: "white", fontSize: 14, fontWeight: 600 }}
+                  >
+                    Email me ({bugNotes.length})
+                  </a>
+                  <button
+                    onClick={() => { if (confirm("Clear all saved notes?")) persistBugNotes([]); }}
+                    style={{ padding: "12px 14px", borderRadius: 12, border: `1px solid ${c.line}`, background: "white", color: c.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>

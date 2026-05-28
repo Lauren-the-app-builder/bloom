@@ -88,8 +88,8 @@ Lauren's finalized program (3 sessions per week, full body):
 
 Session A (default Monday):
 1. Seated dumbbell shoulder press — 3x6-8
-2. Cable face pull — 3x12-15
-3. Lat pulldown (wide grip) — 3x8-10
+2. Lat pulldown (wide grip) — 3x8-10
+3. Cable face pull — 3x12-15
 4. Machine hip thrust — 3x10-12
 5. Leg press — 3x10-12
 6. Cable lateral raise + Tricep pushdown (SUPERSET) — 2x15 / 2x12
@@ -197,7 +197,7 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
             items: {
               type: 'object',
               properties: {
-                type: { type: 'string', description: 'Action type: generate_program, assign_punishment, flag_plateau, set_schedule, edit_workout' },
+                type: { type: 'string', description: 'Action type. Program/chat scope: generate_program, assign_punishment, flag_plateau, set_schedule, edit_workout. Live-workout scope (only valid when the user message says it is mid-workout): set_target_weight, set_target (rep target), set_rest, add_set, add_exercise, remove_exercise, reorder.' },
                 program: { type: 'object', description: 'For generate_program: the full program object with weeks array' },
                 description: { type: 'string', description: 'For assign_punishment: the punishment description' },
                 exercise: { type: 'string', description: 'For flag_plateau: the exercise name. For edit_workout: the exercise whose reps you are changing (pair with reps).' },
@@ -207,7 +207,11 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
                 swap_to: { type: 'string', description: 'For edit_workout: exercise name to replace it with.' },
                 add_exercise: { type: 'string', description: 'For edit_workout: name of an exercise to add to the session.' },
                 remove_exercise: { type: 'string', description: 'For edit_workout: name of an exercise to remove from the session.' },
-                reps: { type: 'string', description: 'For edit_workout: a rep range like "8-10" — used with add_exercise (target for the new exercise) or with exercise (new target for an existing exercise).' },
+                reps: { type: 'string', description: 'For edit_workout: a rep range like "8-10" — used with add_exercise (target for the new exercise) or with exercise (new target for an existing exercise). For live-workout set_target: the new top rep target (as a number string).' },
+                weight: { type: 'number', description: 'For live-workout set_target_weight or add_exercise: the working weight in the user\'s unit.' },
+                seconds: { type: 'number', description: 'For live-workout set_rest: rest time in seconds for this exercise.' },
+                sets: { type: 'number', description: 'For live-workout add_exercise: number of sets to add (default 3).' },
+                order: { type: 'array', items: { type: 'string' }, description: 'For live-workout reorder: list of exercise names in the desired new order.' },
                 assignments: {
                   type: 'array',
                   description: 'For set_schedule: which day each lifting session falls on this week. Include all three sessions.',

@@ -188,6 +188,41 @@ export function saveProgram(program) {
   return list;
 }
 
+// Idempotent migration: Session A should run lat pulldown before cable face
+// pull. Older generated programs had the reverse order. Safe to call every
+// load — only swaps when the current order is wrong.
+export function ensureSessionAOrder() {
+  try {
+    const list = load('wrenProgram', []);
+    let changed = false;
+    const lower = (s) => String(s || '').toLowerCase();
+    for (const entry of list) {
+      const program = entry?.program_json || entry;
+      if (!program?.weeks?.length) continue;
+      for (const wk of program.weeks) {
+        const sessions = Array.isArray(wk?.sessions)
+          ? wk.sessions
+          : (wk?.sessions && typeof wk.sessions === 'object' ? Object.values(wk.sessions) : []);
+        for (const sess of sessions) {
+          if (String(sess?.session_label || '').toUpperCase() !== 'A') continue;
+          if (!Array.isArray(sess.exercises)) continue;
+          const fpIdx = sess.exercises.findIndex(e => lower(e?.name).includes('cable face pull'));
+          const lpIdx = sess.exercises.findIndex(e => lower(e?.name).includes('lat pulldown'));
+          if (fpIdx === -1 || lpIdx === -1) continue;
+          if (fpIdx < lpIdx) {
+            const a = sess.exercises[fpIdx];
+            sess.exercises[fpIdx] = sess.exercises[lpIdx];
+            sess.exercises[lpIdx] = a;
+            changed = true;
+          }
+        }
+      }
+    }
+    if (changed) save('wrenProgram', list);
+    return changed;
+  } catch { return false; }
+}
+
 // Monday-anchored key for the current calendar week, e.g. "2026-05-25".
 export function currentWeekKey(d = new Date()) {
   const x = new Date(d); x.setHours(0, 0, 0, 0);
