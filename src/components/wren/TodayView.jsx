@@ -200,10 +200,19 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren }) {
                     const done = doneLabels.has(String(s.session_label).toUpperCase());
                     const isToday = s.scheduled_day && s.scheduled_day.toLowerCase() === dayName.toLowerCase();
                     return (
-                      <div key={s.session_label} style={{
-                        display: 'flex', alignItems: 'center', gap: 10,
-                        padding: '8px 10px', borderRadius: 12, background: c.white,
-                      }}>
+                      <button
+                        key={s.session_label}
+                        onClick={() => {
+                          const w = buildWorkoutFromSession(s);
+                          if (w && onStartWorkout) onStartWorkout(w);
+                        }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '8px 10px', borderRadius: 12, background: c.white,
+                          border: `1px solid ${c.line}`, cursor: 'pointer', textAlign: 'left',
+                          fontFamily: 'inherit', width: '100%',
+                        }}
+                      >
                         <div style={{
                           width: 26, height: 26, borderRadius: 8, background: sc.gradient,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -227,8 +236,10 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren }) {
                           </div>
                         ) : isToday ? (
                           <span style={{ fontSize: 10, fontWeight: 700, color: c.rosedeep, background: c.blushLight, padding: '2px 8px', borderRadius: 999 }}>Today</span>
-                        ) : null}
-                      </div>
+                        ) : (
+                          <Play size={12} color={c.muted} style={{ flexShrink: 0 }} />
+                        )}
+                      </button>
                     );
                   })}
                 </div>
@@ -428,63 +439,6 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren }) {
           <Sparkles size={22} color={c.muted} style={{ marginBottom: 10 }} />
           <div style={{ fontSize: 14, fontWeight: 600, color: c.charcoal }}>No program yet</div>
           <div style={{ fontSize: 12, color: c.muted, marginTop: 4 }}>Chat with Wren to get started</div>
-        </div>
-      )}
-
-      {/* All sessions */}
-      {allSessions.length > 0 && (
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: c.muted, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8 }}>
-            All Sessions
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {allSessions.map((session, i) => {
-              const isTodays = todaySession && session.session_label === todaySession.session_label;
-              const sColors = SESSION_COLORS[session.session_label] || SESSION_COLORS.A;
-              const done = doneLabels.has(String(session.session_label).toUpperCase());
-              return (
-                <button
-                  key={i}
-                  onClick={() => {
-                    const w = buildWorkoutFromSession(session);
-                    if (w && onStartWorkout) onStartWorkout(w);
-                  }}
-                  style={{
-                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '14px 16px', borderRadius: 18,
-                    background: c.white, border: `1px solid ${c.line}`,
-                    cursor: 'pointer', textAlign: 'left',
-                    boxShadow: '0 2px 8px rgba(180,140,200,0.08)',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{
-                      width: 36, height: 36, borderRadius: 12,
-                      background: sColors.gradient,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: 'white', fontSize: 13, fontWeight: 800,
-                      boxShadow: `0 2px 6px ${sColors.shadow}`,
-                      opacity: done ? 0.5 : 1,
-                    }}>
-                      {session.session_label}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: done ? c.muted : c.charcoal, textDecoration: done ? 'line-through' : 'none' }}>
-                        Session {session.session_label}
-                        {!done && isTodays && <span style={{ fontSize: 9, color: c.rosedeep, fontWeight: 700, marginLeft: 6, background: c.blushLight, padding: '1px 6px', borderRadius: 999 }}>TODAY</span>}
-                      </div>
-                      <div style={{ fontSize: 11, color: c.muted, marginTop: 1 }}>
-                        {session.exercises.length} exercises · {session.scheduled_day}
-                      </div>
-                    </div>
-                  </div>
-                  {done
-                    ? <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#4a8a5a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Check size={13} color="white" strokeWidth={3} /></div>
-                    : <Play size={14} color={c.muted} />}
-                </button>
-              );
-            })}
-          </div>
         </div>
       )}
 

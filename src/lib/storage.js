@@ -230,17 +230,21 @@ export function ensureSessionAOrder() {
   });
 }
 
-// Idempotent migration: Session C replaces "Barbell upright row" with
-// "Lying leg curl" (3x10-12). Only swaps if the upright row is still there.
+// Idempotent migration: Session C ends with "Seated leg curl" (3x10-12). Both
+// the original "Barbell upright row" and the earlier intermediate swap
+// ("Lying leg curl") get rewritten — and an already-seated entry is a noop.
 export function ensureSessionCLegCurl() {
   const lower = (s) => String(s || '').toLowerCase();
   return mutateProgramSessions('C', (sess) => {
-    const idx = sess.exercises.findIndex(e => lower(e?.name).includes('barbell upright row'));
+    const idx = sess.exercises.findIndex(e => {
+      const n = lower(e?.name);
+      return n.includes('barbell upright row') || n.includes('lying leg curl');
+    });
     if (idx === -1) return false;
     const old = sess.exercises[idx] || {};
     sess.exercises[idx] = {
       ...old,
-      name: 'Lying leg curl',
+      name: 'Seated leg curl',
       reps: '10-12',
       // Drop any leftover superset link, since the swapped-in exercise is a
       // standalone hamstring isolation.
