@@ -105,6 +105,22 @@ export function addWrenMessage(msg) {
   return list;
 }
 
+// Archive the current chat into wrenChatArchive (so nothing is ever lost) and
+// clear wrenChat so the next exchange starts fresh — Wren has no memory of
+// the prior thread. Triggered when Lauren has been away long enough.
+export function resetWrenChat() {
+  const current = load('wrenChat', []);
+  if (!current.length) return;
+  const archive = load('wrenChatArchive', []);
+  archive.push({
+    id: crypto.randomUUID(),
+    archived_at: Date.now(),
+    messages: current,
+  });
+  save('wrenChatArchive', archive);
+  save('wrenChat', []);
+}
+
 // ---------- Wren program ----------
 // Canonical sets per exercise (overrides Wren's data if it generated wrong counts).
 // Default = 3 sets; the patterns below are the only exercises that should be 2 sets.

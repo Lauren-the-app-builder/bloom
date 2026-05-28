@@ -2769,6 +2769,43 @@ function ExerciseProgressView({ exerciseName, onClose }) {
 }
 
 // ---------- SETTINGS MODAL ----------
+// Rest-end phrase picker section used inside SettingsModal. The chosen value
+// is persisted to localStorage and read by playRestDone() in ActiveWorkout.
+// Disabled when a custom voice recording is present (recording always wins).
+function RestPhraseSection({ disabled }) {
+  const [phrase, setPhraseLocal] = useState(() => localStorage.getItem("bloom:restPhrase") || DEFAULT_REST_PHRASE);
+  const update = (v) => {
+    setPhraseLocal(v);
+    try { localStorage.setItem("bloom:restPhrase", v); } catch {}
+  };
+  return (
+    <div style={{ background: c.white, border: `1px solid ${c.line}`, borderRadius: 16, padding: 16, marginBottom: 14 }}>
+      <p style={{ fontSize: 11, fontWeight: 700, color: c.rosedeep, margin: "0 0 8px", letterSpacing: 0.5 }}>REST PHRASE</p>
+      <p style={{ fontSize: 12, color: c.muted, margin: "0 0 12px", lineHeight: 1.4 }}>
+        {disabled
+          ? "Your custom voice recording will play instead. Clear the recording above to use a text phrase."
+          : "Pick the phrase spoken when the rest timer ends."}
+      </p>
+      <select
+        value={phrase}
+        onChange={(e) => update(e.target.value)}
+        disabled={disabled}
+        style={{
+          width: "100%", boxSizing: "border-box",
+          padding: "10px 12px", borderRadius: 12,
+          border: `1px solid ${c.line}`, background: "white",
+          fontSize: 14, fontFamily: "inherit", color: c.charcoal,
+          opacity: disabled ? 0.45 : 1,
+        }}
+      >
+        {REST_PHRASES.map((p) => (
+          <option key={p} value={p}>{p}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function SettingsModal({ onClose, onExport, unit, setUnit }) {
   const VOICE_KEY = "bloom:restVoice";
   const [hasVoice, setHasVoice] = useState(() => !!localStorage.getItem(VOICE_KEY));
@@ -2832,7 +2869,7 @@ function SettingsModal({ onClose, onExport, unit, setUnit }) {
           <p style={{ fontSize: 12, color: c.muted, margin: "0 0 12px", lineHeight: 1.4 }}>
             {hasVoice
               ? "Custom voice recorded. This plays when your rest period ends."
-              : "Record a short voice message (up to 5 seconds) that plays when your rest period ends. Default: \"Next set, bitch!\" (text-to-speech)."}
+              : "Record a short voice message (up to 5 seconds) that plays when your rest period ends. Otherwise the phrase picked below is spoken."}
           </p>
           <div style={{ display: "flex", gap: 8 }}>
             {recording ? (
@@ -2856,6 +2893,9 @@ function SettingsModal({ onClose, onExport, unit, setUnit }) {
             )}
           </div>
         </div>
+
+        {/* Rest phrase picker */}
+        <RestPhraseSection disabled={hasVoice} />
 
         {/* Refresh */}
         <button onClick={() => window.location.reload()} style={{ ...btn, marginBottom: 10 }}>

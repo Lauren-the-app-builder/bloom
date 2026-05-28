@@ -1,7 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Sparkles, ChevronRight } from 'lucide-react';
 import { c } from './tokens';
-import { getWrenMessages, addWrenMessage, getActiveProgram, saveProgram, setProgramSchedule, editProgramSession, getSessions, getMissedSessions, addMissedSession } from '../../lib/storage';
+import { getWrenMessages, addWrenMessage, resetWrenChat, getActiveProgram, saveProgram, setProgramSchedule, editProgramSession, getSessions, getMissedSessions, addMissedSession } from '../../lib/storage';
+
+// If the gap since Lauren's last interaction with Wren exceeds this, the
+// chat starts fresh on next open — Wren has no memory of the old thread,
+// and the visible chat is empty (the old thread is archived, not deleted).
+const WREN_SESSION_GAP_MS = 6 * 60 * 60 * 1000; // 6 hours
 import { buildWrenContext } from './wrenHelpers';
 import { askWren } from '../../lib/wren';
 
@@ -38,7 +43,20 @@ export default function WrenChat({ schedule, myWorkouts, unit, sessionsBump, onS
   const bottomRef = useRef(null);
   const didOnboard = useRef(false);
 
-  useEffect(() => { setMessages(getWrenMessages()); }, []);
+  useEffect(() => {
+    // If the last exchange was a long time ago, archive it and start fresh.
+    const existing = getWrenMessages();
+    if (existing.length > 0) {
+      const last = existing[existing.length - 1];
+      const gap = Date.now() - (Number(last.created_at) || 0);
+      if (gap > WREN_SESSION_GAP_MS) {
+        resetWrenChat();
+        setMessages([]);
+        return;
+      }
+    }
+    setMessages(existing);
+  }, []);
 
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
