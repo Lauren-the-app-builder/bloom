@@ -53,7 +53,7 @@ import {
   Link2,
   Link2Off,
 } from "lucide-react";
-import { useLocalState, recordSession, getSessions, getLastSession, updateSession, deleteSession, load, save, getActiveProgram, getMissedSessions, ensureSessionAOrder } from "./lib/storage";
+import { useLocalState, recordSession, getSessions, getLastSession, updateSession, deleteSession, load, save, getActiveProgram, getMissedSessions, ensureSessionAOrder, ensureSessionCLegCurl } from "./lib/storage";
 import { supabase, isSupabaseConfigured } from "./lib/supabase";
 import { subscribeToPush, scheduleRestPush, cancelRestPush } from "./lib/push";
 import WrenView from "./components/wren/WrenView";
@@ -268,14 +268,14 @@ function estimateMinutes(workout, sessions) {
 // ---------- main ----------
 export default function BloomApp() {
   const [tab, setTab] = useState("home");
-  // One-time idempotent reorder for older programs that had cable face pull
-  // before lat pulldown in Session A. Also re-runs after a sync pulls a fresh
-  // program from the server.
+  // Idempotent program fixups: reorder Session A (lat pulldown → cable face
+  // pull) and swap Session C's barbell upright row for a lying leg curl.
+  // Re-run after a sync pulls a fresh program from the server.
   useEffect(() => {
-    ensureSessionAOrder();
-    const onSynced = () => { ensureSessionAOrder(); };
-    window.addEventListener("bloom:synced", onSynced);
-    return () => window.removeEventListener("bloom:synced", onSynced);
+    const runFixups = () => { ensureSessionAOrder(); ensureSessionCLegCurl(); };
+    runFixups();
+    window.addEventListener("bloom:synced", runFixups);
+    return () => window.removeEventListener("bloom:synced", runFixups);
   }, []);
 
   // iOS 17+: setting the audio session to "ambient" lets the rest-timer beep

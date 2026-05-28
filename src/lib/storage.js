@@ -188,14 +188,13 @@ export function saveProgram(program) {
   return list;
 }
 
-// Idempotent migration: Session A should run lat pulldown before cable face
-// pull. Older generated programs had the reverse order. Safe to call every
-// load — only swaps when the current order is wrong.
-export function ensureSessionAOrder() {
+// Walk every session in the active program(s), calling mutator(sess) when the
+// session's label matches `label`. mutator should mutate sess.exercises in
+// place and return true if it changed anything. Saves once if anything moved.
+function mutateProgramSessions(label, mutator) {
   try {
     const list = load('wrenProgram', []);
     let changed = false;
-    const lower = (s) => String(s || '').toLowerCase();
     for (const entry of list) {
       const program = entry?.program_json || entry;
       if (!program?.weeks?.length) continue;
@@ -204,23 +203,51 @@ export function ensureSessionAOrder() {
           ? wk.sessions
           : (wk?.sessions && typeof wk.sessions === 'object' ? Object.values(wk.sessions) : []);
         for (const sess of sessions) {
-          if (String(sess?.session_label || '').toUpperCase() !== 'A') continue;
+          if (String(sess?.session_label || '').toUpperCase() !== String(label).toUpperCase()) continue;
           if (!Array.isArray(sess.exercises)) continue;
-          const fpIdx = sess.exercises.findIndex(e => lower(e?.name).includes('cable face pull'));
-          const lpIdx = sess.exercises.findIndex(e => lower(e?.name).includes('lat pulldown'));
-          if (fpIdx === -1 || lpIdx === -1) continue;
-          if (fpIdx < lpIdx) {
-            const a = sess.exercises[fpIdx];
-            sess.exercises[fpIdx] = sess.exercises[lpIdx];
-            sess.exercises[lpIdx] = a;
-            changed = true;
-          }
+          if (mutator(sess)) changed = true;
         }
       }
     }
     if (changed) save('wrenProgram', list);
     return changed;
   } catch { return false; }
+}
+
+// Idempotent migration: Session A should run lat pulldown before cable face
+// pull. Older generated programs had the reverse order. Safe to call every
+// load — only swaps when the current order is wrong.
+export function ensureSessionAOrder() {
+  const lower = (s) => String(s || '').toLowerCase();
+  return mutateProgramSessions('A', (sess) => {
+    const fpIdx = sess.exercises.findIndex(e => lower(e?.name).includes('cable face pull'));
+    const lpIdx = sess.exercises.findIndex(e => lower(e?.name).includes('lat pulldown'));
+    if (fpIdx === -1 || lpIdx === -1 || fpIdx >= lpIdx) return false;
+    const a = sess.exercises[fpIdx];
+    sess.exercises[fpIdx] = sess.exercises[lpIdx];
+    sess.exercises[lpIdx] = a;
+    return true;
+  });
+}
+
+// Idempotent migration: Session C replaces "Barbell upright row" with
+// "Lying leg curl" (3x10-12). Only swaps if the upright row is still there.
+export function ensureSessionCLegCurl() {
+  const lower = (s) => String(s || '').toLowerCase();
+  return mutateProgramSessions('C', (sess) => {
+    const idx = sess.exercises.findIndex(e => lower(e?.name).includes('barbell upright row'));
+    if (idx === -1) return false;
+    const old = sess.exercises[idx] || {};
+    sess.exercises[idx] = {
+      ...old,
+      name: 'Lying leg curl',
+      reps: '10-12',
+      // Drop any leftover superset link, since the swapped-in exercise is a
+      // standalone hamstring isolation.
+      superset_with: undefined,
+    };
+    return true;
+  });
 }
 
 // Monday-anchored key for the current calendar week, e.g. "2026-05-25".

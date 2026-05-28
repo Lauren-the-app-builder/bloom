@@ -108,7 +108,7 @@ Session C (default Friday):
 3. Seated cable row (wide grip) — 3x10-12
 4. Hack squat — 3x10-12
 5. Cable reverse fly — 2x15
-6. Barbell upright row — 2x12
+6. Lying leg curl — 3x10-12
 
 Exercises NOT in Lauren's program (never suggest these): Romanian deadlift, barbell back squat, cable kickback, reverse pec deck, Bulgarian split squat, landmine row, goblet squat, rear delt pull-apart, lunges, any single-leg hip thrust variation.
 
