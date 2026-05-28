@@ -5,6 +5,13 @@ const UnitsContext = createContext({ unit: "kg", setUnit: () => {} });
 const useUnit = () => useContext(UnitsContext).unit;
 const incrementFor = (unit, isLower) => unit === "kg" ? (isLower ? 5 : 2.5) : (isLower ? 10 : 5);
 
+// Parse a user-typed weight/reps string. Accepts both "1.5" and "1,5" decimals
+// so European-style commas don't silently become 0. Returns 0 on empty/garbage.
+const toNum = (v) => {
+  const n = Number(String(v ?? "").replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+};
+
 // Progressive overload bump: 5% of current weight, rounded to the nearest
 // 0.5 (kg) or 1 (lb), with a sensible floor so tiny lifts still see progress.
 function bumpWeight(currentWeight, unit, isLower) {
@@ -1710,8 +1717,8 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
       const statuses = [];
       for (const r of ex.rows) {
         if (!(r.done && (r.reps !== "" || r.weight !== ""))) continue;
-        const reps = Number(r.reps) || 0;
-        const weight = Number(r.weight) || 0;
+        const reps = toNum(r.reps);
+        const weight = toNum(r.weight);
         done.push({ reps, weight });
         const tReps = Number(r.targetReps) || 0;
         const tWeight = Number(r.targetWeight) || 0;
@@ -2978,7 +2985,7 @@ function SessionEditModal({ session, onClose, onSave, onDelete }) {
   const save = () => {
     const cleaned = {};
     for (const [name, sets] of Object.entries(exercises)) {
-      const valid = sets.filter(s => s.reps !== "" && s.weight !== "").map(s => ({ reps: Number(s.reps), weight: Number(s.weight) }));
+      const valid = sets.filter(s => s.reps !== "" && s.weight !== "").map(s => ({ reps: toNum(s.reps), weight: toNum(s.weight) }));
       if (valid.length) cleaned[name] = valid;
     }
     const [y, m, d] = dateStr.split("-").map(Number);
@@ -3208,7 +3215,7 @@ function FocusLiftView({ onClose, focusLiftName, setFocusLiftName, allExercises 
   const removePastSet = (i) => setPastSets(pastSets.filter((_, j) => j !== i));
   const savePastEntry = () => {
     const valid = pastSets
-      .map(s => ({ reps: parseInt(s.reps) || 0, weight: parseFloat(s.weight) || 0 }))
+      .map(s => ({ reps: toNum(s.reps), weight: toNum(s.weight) }))
       .filter(s => s.reps && s.weight);
     if (!valid.length) return;
     const list = load("sessions", []);
@@ -3823,7 +3830,7 @@ function ImportHistoryModal({ workout, onClose, onSave, mode = "create" }) {
     const data = { date: dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" }), finishedAt: dateObj.getTime(), exercises: {} };
     rows.forEach(r => {
       const valid = r.sets
-        .map(s => ({ reps: parseInt(s.reps) || 0, weight: parseFloat(s.weight) || 0 }))
+        .map(s => ({ reps: toNum(s.reps), weight: toNum(s.weight) }))
         .filter(s => s.reps && s.weight);
       if (valid.length) data.exercises[r.name] = valid;
     });
