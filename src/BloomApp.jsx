@@ -1505,24 +1505,23 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
     try { localStorage.setItem("bloom:bugNotes", JSON.stringify(next)); } catch {}
   };
 
-  // Play custom voice (recorded in Settings → Rest timer) OR fall back to TTS
-  // of the chosen phrase. Voice and phrase can only be changed in Settings.
+  // Speak the chosen phrase using the chosen system voice. Configured only in
+  // Settings → Rest timer; no UI for changes during a workout.
   const playRestDone = () => {
     const phrase = localStorage.getItem("bloom:restPhrase") || DEFAULT_REST_PHRASE;
-    const customUrl = localStorage.getItem("bloom:restVoice");
-    // 1. Play custom recorded voice if available, otherwise TTS.
-    if (customUrl) {
-      try { const a = new Audio(customUrl); a.volume = 1.0; a.play().catch(() => {}); } catch {}
-    } else {
-      try {
-        if (window.speechSynthesis) {
-          const u = new SpeechSynthesisUtterance(phrase);
-          u.rate = 1.0; u.pitch = 1.1; u.volume = 1.0;
-          window.speechSynthesis.cancel();
-          window.speechSynthesis.speak(u);
+    const voiceName = localStorage.getItem("bloom:restVoiceName") || "";
+    try {
+      if (window.speechSynthesis) {
+        const u = new SpeechSynthesisUtterance(phrase);
+        if (voiceName) {
+          const v = (window.speechSynthesis.getVoices() || []).find(x => x.name === voiceName);
+          if (v) u.voice = v;
         }
-      } catch {}
-    }
+        u.rate = 1.0; u.pitch = 1.1; u.volume = 1.0;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(u);
+      }
+    } catch {}
     // 2. Two beeps as backup.
     const url = getBeepUrl();
     [800, 1200].forEach((delay) => {
@@ -2691,91 +2690,114 @@ function ExerciseProgressView({ exerciseName, onClose }) {
 }
 
 // ---------- SETTINGS MODAL ----------
-// Rest-end phrase picker section used inside SettingsModal. The chosen value
-// is persisted to localStorage and read by playRestDone() in ActiveWorkout.
-// Disabled when a custom voice recording is present (recording always wins).
-function RestPhraseSection({ disabled }) {
-  const [phrase, setPhraseLocal] = useState(() => localStorage.getItem("bloom:restPhrase") || DEFAULT_REST_PHRASE);
-  const update = (v) => {
-    setPhraseLocal(v);
+// Dedicated rest-timer settings page reachable from Settings → "Rest timer".
+// Two controls: a free text input for the spoken message (bloom:restPhrase)
+// and a dropdown of system speechSynthesis voices (bloom:restVoiceName), plus
+// a Preview button. Voice recording is intentionally not offered here — it's
+// a kept-it-simple decision so this surface doesn't keep breaking.
+function RestTimerScreen({ onBack }) {
+  const [phrase, setPhrase] = useState(() => localStorage.getItem("bloom:restPhrase") || DEFAULT_REST_PHRASE);
+  const [voiceName, setVoiceName] = useState(() => localStorage.getItem("bloom:restVoiceName") || "");
+  const [voices, setVoices] = useState(() => (typeof window !== "undefined" && window.speechSynthesis ? window.speechSynthesis.getVoices() : []));
+
+  // System voices load asynchronously on some platforms (notably iOS Safari).
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    const load = () => setVoices(window.speechSynthesis.getVoices() || []);
+    load();
+    window.speechSynthesis.addEventListener("voiceschanged", load);
+    return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
+  }, []);
+
+  const updatePhrase = (v) => {
+    setPhrase(v);
     try { localStorage.setItem("bloom:restPhrase", v); } catch {}
   };
+  const updateVoice = (v) => {
+    setVoiceName(v);
+    try { localStorage.setItem("bloom:restVoiceName", v); } catch {}
+  };
+  const preview = () => {
+    try {
+      if (!window.speechSynthesis) return;
+      const u = new SpeechSynthesisUtterance(phrase || DEFAULT_REST_PHRASE);
+      if (voiceName) {
+        const v = voices.find(x => x.name === voiceName);
+        if (v) u.voice = v;
+      }
+      u.rate = 1.0; u.pitch = 1.1; u.volume = 1.0;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
+    } catch {}
+  };
+
+  const btn = { width: "100%", background: c.white, border: `1px solid ${c.line}`, borderRadius: 14, padding: 14, fontSize: 13, fontWeight: 600, cursor: "pointer", color: c.charcoal, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit" };
+
   return (
-    <div style={{ background: c.white, border: `1px solid ${c.line}`, borderRadius: 16, padding: 16, marginBottom: 14 }}>
-      <p style={{ fontSize: 11, fontWeight: 700, color: c.rosedeep, margin: "0 0 8px", letterSpacing: 0.5 }}>REST PHRASE</p>
-      <p style={{ fontSize: 12, color: c.muted, margin: "0 0 12px", lineHeight: 1.4 }}>
-        {disabled
-          ? "Your custom voice recording will play instead. Clear the recording above to use a text phrase."
-          : "Pick the phrase spoken when the rest timer ends."}
-      </p>
-      <select
-        value={phrase}
-        onChange={(e) => update(e.target.value)}
-        disabled={disabled}
-        style={{
-          width: "100%", boxSizing: "border-box",
-          padding: "10px 12px", borderRadius: 12,
-          border: `1px solid ${c.line}`, background: "white",
-          fontSize: 14, fontFamily: "inherit", color: c.charcoal,
-          opacity: disabled ? 0.45 : 1,
-        }}
-      >
-        {REST_PHRASES.map((p) => (
-          <option key={p} value={p}>{p}</option>
-        ))}
-      </select>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 400 }} onClick={onBack}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: c.cream, width: "100%", maxWidth: 430, borderRadius: "28px 28px 0 0", padding: 24, maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 18 }}>
+          <button onClick={onBack} style={{ background: "none", border: "none", color: c.charcoal, cursor: "pointer", padding: 4, display: "flex", alignItems: "center" }} aria-label="Back">
+            <ChevronLeft size={20} />
+          </button>
+          <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>Rest timer</h2>
+        </div>
+
+        <div style={{ background: c.white, border: `1px solid ${c.line}`, borderRadius: 16, padding: 16, marginBottom: 14 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: c.rosedeep, margin: "0 0 8px", letterSpacing: 0.5 }}>MESSAGE</p>
+          <p style={{ fontSize: 12, color: c.muted, margin: "0 0 12px", lineHeight: 1.4 }}>
+            Spoken when the rest timer ends. Type whatever you want.
+          </p>
+          <input
+            type="text"
+            value={phrase}
+            onChange={(e) => updatePhrase(e.target.value)}
+            placeholder={DEFAULT_REST_PHRASE}
+            style={{
+              width: "100%", boxSizing: "border-box",
+              padding: "10px 12px", borderRadius: 12,
+              border: `1px solid ${c.line}`, background: "white",
+              fontSize: 14, fontFamily: "inherit", color: c.charcoal,
+            }}
+          />
+        </div>
+
+        <div style={{ background: c.white, border: `1px solid ${c.line}`, borderRadius: 16, padding: 16, marginBottom: 14 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: c.rosedeep, margin: "0 0 8px", letterSpacing: 0.5 }}>VOICE</p>
+          <p style={{ fontSize: 12, color: c.muted, margin: "0 0 12px", lineHeight: 1.4 }}>
+            {voices.length === 0
+              ? "Loading available voices… If none show up, your device may need to enable speech voices in system settings."
+              : "Choose which system voice speaks the message."}
+          </p>
+          <select
+            value={voiceName}
+            onChange={(e) => updateVoice(e.target.value)}
+            style={{
+              width: "100%", boxSizing: "border-box",
+              padding: "10px 12px", borderRadius: 12,
+              border: `1px solid ${c.line}`, background: "white",
+              fontSize: 14, fontFamily: "inherit", color: c.charcoal,
+            }}
+          >
+            <option value="">System default</option>
+            {voices.map((v) => (
+              <option key={`${v.name}-${v.lang}`} value={v.name}>{v.name} ({v.lang})</option>
+            ))}
+          </select>
+        </div>
+
+        <button onClick={preview} style={{ ...btn, background: c.rosedeep, color: "white", border: "none" }}>
+          <Play size={14} /> Preview
+        </button>
+      </div>
     </div>
   );
 }
 
 function SettingsModal({ onClose, onExport, unit, setUnit }) {
-  const VOICE_KEY = "bloom:restVoice";
-  const [hasVoice, setHasVoice] = useState(() => !!localStorage.getItem(VOICE_KEY));
-  const [recording, setRecording] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  const recRef = useRef(null);
+  const [showRestTimer, setShowRestTimer] = useState(false);
 
-  const startRec = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4" });
-      const chunks = [];
-      mr.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-      mr.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunks, { type: mr.mimeType });
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          localStorage.setItem(VOICE_KEY, reader.result);
-          setHasVoice(true);
-        };
-        reader.readAsDataURL(blob);
-      };
-      recRef.current = mr;
-      mr.start();
-      setRecording(true);
-      // Auto-stop after 5s.
-      setTimeout(() => { if (mr.state === "recording") { mr.stop(); setRecording(false); } }, 5000);
-    } catch {}
-  };
-
-  const stopRec = () => {
-    if (recRef.current && recRef.current.state === "recording") recRef.current.stop();
-    setRecording(false);
-  };
-
-  const playVoice = () => {
-    const url = localStorage.getItem(VOICE_KEY);
-    if (!url) return;
-    const a = new Audio(url);
-    a.onended = () => setPlaying(false);
-    a.play().catch(() => {});
-    setPlaying(true);
-  };
-
-  const clearVoice = () => { localStorage.removeItem(VOICE_KEY); setHasVoice(false); };
-
-  const btn = { width: "100%", background: c.white, border: `1px solid ${c.line}`, borderRadius: 14, padding: 14, fontSize: 13, fontWeight: 600, cursor: "pointer", color: c.charcoal, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 };
+  const btn = { width: "100%", background: c.white, border: `1px solid ${c.line}`, borderRadius: 14, padding: 14, fontSize: 13, fontWeight: 600, cursor: "pointer", color: c.charcoal, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit" };
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 300 }} onClick={onClose}>
@@ -2785,39 +2807,11 @@ function SettingsModal({ onClose, onExport, unit, setUnit }) {
           <button onClick={onClose} style={{ background: "none", border: "none", color: c.muted, cursor: "pointer" }}><X size={20} /></button>
         </div>
 
-        {/* Rest timer voice */}
-        <div style={{ background: c.white, border: `1px solid ${c.line}`, borderRadius: 16, padding: 16, marginBottom: 14 }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: c.rosedeep, margin: "0 0 8px", letterSpacing: 0.5 }}>REST TIMER VOICE</p>
-          <p style={{ fontSize: 12, color: c.muted, margin: "0 0 12px", lineHeight: 1.4 }}>
-            {hasVoice
-              ? "Custom voice recorded. This plays when your rest period ends."
-              : "Record a short voice message (up to 5 seconds) that plays when your rest period ends. Otherwise the phrase picked below is spoken."}
-          </p>
-          <div style={{ display: "flex", gap: 8 }}>
-            {recording ? (
-              <button onClick={stopRec} style={{ ...btn, flex: 1, background: "#e74c3c", color: "white", border: "none" }}>
-                <Pause size={14} /> Stop recording
-              </button>
-            ) : (
-              <button onClick={startRec} style={{ ...btn, flex: 1, background: c.rosedeep, color: "white", border: "none" }}>
-                <Play size={14} /> {hasVoice ? "Re-record" : "Record voice"}
-              </button>
-            )}
-            {hasVoice && !recording && (
-              <>
-                <button onClick={playVoice} disabled={playing} style={{ ...btn, flex: 0, width: 44, padding: 0 }}>
-                  <Play size={16} color={c.rosedeep} />
-                </button>
-                <button onClick={clearVoice} style={{ ...btn, flex: 0, width: 44, padding: 0 }}>
-                  <X size={16} color={c.muted} />
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Rest phrase picker */}
-        <RestPhraseSection disabled={hasVoice} />
+        {/* Rest timer → opens its own page */}
+        <button onClick={() => setShowRestTimer(true)} style={{ ...btn, marginBottom: 10, justifyContent: "space-between" }}>
+          <span>Rest timer</span>
+          <ChevronRight size={16} color={c.muted} />
+        </button>
 
         {/* Refresh */}
         <button onClick={() => window.location.reload()} style={{ ...btn, marginBottom: 10 }}>
@@ -2853,6 +2847,7 @@ function SettingsModal({ onClose, onExport, unit, setUnit }) {
           </button>
         )}
       </div>
+      {showRestTimer && <RestTimerScreen onBack={() => setShowRestTimer(false)} />}
     </div>
   );
 }
