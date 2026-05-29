@@ -128,11 +128,10 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren }) {
   })();
 
   return (
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
     <div style={{
-      flex: 1, minHeight: 0, overflowY: 'auto',
       padding: '16px 16px calc(40px + env(safe-area-inset-bottom)) 16px',
       display: 'flex', flexDirection: 'column', gap: 14,
-      WebkitOverflowScrolling: 'touch',
     }}>
       {/* Header */}
       <div>
@@ -474,6 +473,7 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren }) {
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

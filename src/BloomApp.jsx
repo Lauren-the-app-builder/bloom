@@ -1494,10 +1494,6 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
     } catch {}
   };
 
-  // Custom recorded voice (stored as base64 data URL in localStorage).
-  const VOICE_KEY = "bloom:restVoice";
-  const [hasCustomVoice, setHasCustomVoice] = useState(() => !!localStorage.getItem(VOICE_KEY));
-  const [restPhrase, setRestPhrase] = useState(() => localStorage.getItem("bloom:restPhrase") || DEFAULT_REST_PHRASE);
   // In-workout bug notes — collected locally, emailed on demand.
   const [showBugReport, setShowBugReport] = useState(false);
   const [bugDraft, setBugDraft] = useState("");
@@ -1508,47 +1504,12 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
     setBugNotes(next);
     try { localStorage.setItem("bloom:bugNotes", JSON.stringify(next)); } catch {}
   };
-  const [isRecording, setIsRecording] = useState(false);
-  const recorderRef = useRef(null);
 
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4" });
-      const chunks = [];
-      mr.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-      mr.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunks, { type: mr.mimeType });
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          localStorage.setItem(VOICE_KEY, reader.result);
-          setHasCustomVoice(true);
-        };
-        reader.readAsDataURL(blob);
-      };
-      recorderRef.current = mr;
-      mr.start();
-      setIsRecording(true);
-    } catch {}
-  };
-
-  const stopRecording = () => {
-    if (recorderRef.current && recorderRef.current.state === "recording") {
-      recorderRef.current.stop();
-    }
-    setIsRecording(false);
-  };
-
-  const clearRecording = () => {
-    localStorage.removeItem(VOICE_KEY);
-    setHasCustomVoice(false);
-  };
-
-  // Play custom voice OR fallback to TTS + beeps.
+  // Play custom voice (recorded in Settings → Rest timer) OR fall back to TTS
+  // of the chosen phrase. Voice and phrase can only be changed in Settings.
   const playRestDone = () => {
     const phrase = localStorage.getItem("bloom:restPhrase") || DEFAULT_REST_PHRASE;
-    const customUrl = localStorage.getItem(VOICE_KEY);
+    const customUrl = localStorage.getItem("bloom:restVoice");
     // 1. Play custom recorded voice if available, otherwise TTS.
     if (customUrl) {
       try { const a = new Audio(customUrl); a.volume = 1.0; a.play().catch(() => {}); } catch {}
@@ -2242,45 +2203,6 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
           </div>
           <div style={{ height: 4, background: "rgba(255,255,255,0.2)", borderRadius: 2, marginTop: 12, overflow: "hidden" }}>
             <div style={{ height: "100%", width: `${(restSec / restTimer.total) * 100}%`, background: c.rose, transition: "width 0.5s linear" }} />
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-            {isRecording ? (
-              <button onClick={stopRecording} style={{ ...timerBtn, background: "#e74c3c", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                <Pause size={12} /> Stop recording
-              </button>
-            ) : (
-              <button onClick={startRecording} style={{ ...timerBtn, flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                <Play size={12} /> {hasCustomVoice ? "Re-record voice" : "Record voice"}
-              </button>
-            )}
-            {hasCustomVoice && !isRecording && (
-              <button onClick={clearRecording} style={{ ...timerBtn, background: "rgba(255,255,255,0.15)" }}>
-                <X size={12} />
-              </button>
-            )}
-          </div>
-          {/* Rest-end phrase picker (used when no custom voice recording is set) */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-            <span style={{ fontSize: 10, opacity: 0.7, letterSpacing: 0.5, flexShrink: 0 }}>SAY</span>
-            <select
-              value={restPhrase}
-              onChange={(e) => {
-                const v = e.target.value;
-                setRestPhrase(v);
-                localStorage.setItem("bloom:restPhrase", v);
-              }}
-              disabled={hasCustomVoice}
-              style={{
-                flex: 1, background: "rgba(255,255,255,0.15)", color: "white",
-                border: "1px solid rgba(255,255,255,0.2)", borderRadius: 10,
-                padding: "6px 8px", fontSize: 12, fontFamily: "inherit",
-                opacity: hasCustomVoice ? 0.4 : 1,
-              }}
-            >
-              {REST_PHRASES.map((p) => (
-                <option key={p} value={p} style={{ color: c.charcoal }}>{p}</option>
-              ))}
-            </select>
           </div>
         </div>
       )}
