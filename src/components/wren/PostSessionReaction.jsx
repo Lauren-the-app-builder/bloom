@@ -4,12 +4,16 @@ import { c } from './tokens';
 import { addWrenMessage, getSessions, getActiveProgram, getMissedSessions } from '../../lib/storage';
 import { buildWrenContext } from './wrenHelpers';
 
-// askWrenReaction is a separate endpoint for post-session reactions
+// askWrenReaction: send a real prompt so Claude has something to react to.
+// (The old version sent the literal string "__reaction__" — the API has no
+// special handling for that, so Wren replied things like "did you say
+// something?")
 async function askWrenReaction(sessionData, context) {
+  const prompt = `I just finished my workout. Here's the data:\n\n${JSON.stringify(sessionData)}\n\nGive me a short post-session reaction — 2 to 4 sentences. Note what stood out, what was good, and one thing to focus on next time. Don't just restate numbers I can already see in the summary.`;
   const res = await fetch('/api/wren', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: '__reaction__', context: { ...context, reactionSessionData: sessionData }, midWorkout: false }),
+    body: JSON.stringify({ message: prompt, context, midWorkout: false }),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();

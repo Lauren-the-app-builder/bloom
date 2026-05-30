@@ -2107,7 +2107,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
 
       {/* finish summary */}
       {finishSummary && (
-        <div style={{ position: "fixed", inset: 0, background: c.cream, zIndex: 250, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, maxWidth: 430, margin: "0 auto" }}>
+        <div style={{ position: "fixed", inset: 0, background: c.cream, zIndex: 250, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", padding: "24px 24px calc(40px + env(safe-area-inset-bottom)) 24px", maxWidth: 430, margin: "0 auto", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
           <div style={{ width: 80, height: 80, borderRadius: "50%", background: `linear-gradient(135deg, ${c.rose}, ${c.blush})`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20, boxShadow: "0 12px 28px rgba(180,140,200,0.35)" }}>
             <Check size={42} color="white" strokeWidth={3} />
           </div>

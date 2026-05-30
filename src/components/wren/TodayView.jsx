@@ -321,9 +321,56 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren }) {
         );
       })()}
 
-      {/* Today's session hero card */}
-      {todaySession && !doneToday && (() => {
-        const colors = SESSION_COLORS[todaySession.session_label] || SESSION_COLORS.A;
+      {/* Done banner — compact, only when today's session is finished */}
+      {todaySession && doneToday && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '12px 16px', borderRadius: 14,
+          background: 'linear-gradient(135deg, #e6f5ea 0%, #d4f0de 100%)',
+          border: '1px solid #c3e6cd',
+        }}>
+          <div style={{
+            width: 28, height: 28, borderRadius: '50%', background: '#4a8a5a',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            <Check size={16} color="white" strokeWidth={3} />
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#2e7d4a' }}>
+            Session {todaySession.session_label} complete — rest up
+          </div>
+        </div>
+      )}
+
+      {/* Hero preview card — today's session if scheduled and not done, else
+          the next upcoming session in the week. Always shown when there's
+          something coming up. */}
+      {(() => {
+        if (!program) return null;
+        // Build a lookup of scheduled_day → session.
+        const sessByDay = {};
+        for (const s of allSessions) {
+          if (s.scheduled_day) sessByDay[s.scheduled_day.toLowerCase()] = s;
+        }
+        // Find the next not-yet-done session in the next 7 days starting today.
+        let pick = null;
+        for (let offset = 0; offset < 7; offset++) {
+          const d = new Date(today);
+          d.setDate(today.getDate() + offset);
+          const dn = d.toLocaleDateString('en-US', { weekday: 'long' });
+          const s = sessByDay[dn.toLowerCase()];
+          if (!s) continue;
+          if (offset === 0 && doneLabels.has(String(s.session_label).toUpperCase())) continue;
+          pick = { session: s, daysAhead: offset, dayName: dn };
+          break;
+        }
+        if (!pick) return null;
+
+        const colors = SESSION_COLORS[pick.session.session_label] || SESSION_COLORS.A;
+        const headLabel = pick.daysAhead === 0
+          ? `Today · ${pick.dayName}`
+          : pick.daysAhead === 1
+            ? `Tomorrow · ${pick.dayName}`
+            : `Next · ${pick.dayName}`;
         return (
           <div style={{
             borderRadius: 24, overflow: 'hidden',
@@ -333,19 +380,19 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren }) {
           }}>
             <div style={{ padding: '22px 22px 14px' }}>
               <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.4, opacity: 0.9, textTransform: 'uppercase', textShadow: '0 1px 4px rgba(0,0,0,0.15)' }}>
-                Session {todaySession.session_label} · {dayName}{isDeload ? ' · 🌙 Deload' : ''}
+                Session {pick.session.session_label} · {headLabel}{isDeload ? ' · 🌙 Deload' : ''}
               </div>
               <div style={{ fontSize: 22, fontWeight: 700, marginTop: 6, textShadow: '0 2px 6px rgba(0,0,0,0.15)' }}>
-                {todaySession.exercises.length} exercises
+                {pick.session.exercises.length} exercises
               </div>
             </div>
 
             <div style={{ padding: '0 18px 12px' }}>
-              {todaySession.exercises.map((ex, i) => (
+              {pick.session.exercises.map((ex, i) => (
                 <div key={i} style={{
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                   padding: '7px 4px',
-                  borderBottom: i < todaySession.exercises.length - 1 ? '1px solid rgba(255,255,255,0.12)' : 'none',
+                  borderBottom: i < pick.session.exercises.length - 1 ? '1px solid rgba(255,255,255,0.12)' : 'none',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     {ex.superset_with && (
@@ -361,7 +408,7 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren }) {
             <div style={{ padding: '6px 18px 18px' }}>
               <button
                 onClick={() => {
-                  const w = buildWorkoutFromSession(todaySession);
+                  const w = buildWorkoutFromSession(pick.session);
                   if (w && onStartWorkout) onStartWorkout(w);
                 }}
                 style={{
@@ -373,44 +420,19 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren }) {
                   boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                 }}
               >
-                <Play size={16} fill={c.charcoal} /> Start Workout
+                <Play size={16} fill={c.charcoal} /> {pick.daysAhead === 0 ? 'Start Workout' : 'Start this workout'}
               </button>
             </div>
           </div>
         );
       })()}
 
-      {/* Done card */}
-      {todaySession && doneToday && (
-        <div style={{
-          borderRadius: 24, padding: 28,
-          background: 'linear-gradient(135deg, #e6f5ea 0%, #d4f0de 100%)',
-          border: '1px solid #c3e6cd', textAlign: 'center',
-          boxShadow: '0 8px 24px rgba(74,138,90,0.12)',
-        }}>
-          <div style={{
-            width: 52, height: 52, borderRadius: '50%', background: '#4a8a5a',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 14px', boxShadow: '0 4px 12px rgba(74,138,90,0.25)',
-          }}>
-            <Check size={26} color="white" strokeWidth={3} />
-          </div>
-          <div style={{ fontSize: 17, fontWeight: 700, color: '#2e7d4a' }}>
-            Session {todaySession.session_label} complete
-          </div>
-          <div style={{ fontSize: 12, color: '#4a8a5a', marginTop: 4 }}>
-            Rest up — you've earned it
-          </div>
-        </div>
-      )}
-
-      {/* Rest day card */}
-      {!todaySession && program && (
+      {/* Program not started yet */}
+      {program && !hasStarted && (
         <div style={{
           borderRadius: 24, padding: 28,
           background: `linear-gradient(135deg, ${c.blushLight} 0%, white 100%)`,
           border: `1px solid ${c.line}`, textAlign: 'center',
-          boxShadow: '0 8px 24px rgba(180,140,200,0.1)',
         }}>
           <div style={{
             width: 52, height: 52, borderRadius: '50%', background: c.blush,
@@ -420,12 +442,10 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren }) {
             <Leaf size={24} color={c.rosedeep} />
           </div>
           <div style={{ fontSize: 17, fontWeight: 700, color: c.charcoal }}>
-            {hasStarted ? 'Rest day' : 'Program starts soon'}
+            Program starts soon
           </div>
           <div style={{ fontSize: 12, color: c.muted, marginTop: 4 }}>
-            {hasStarted
-              ? 'Recovery is where the magic happens'
-              : `Week 1 begins ${startDate ? startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'soon'}`}
+            {`Week 1 begins ${startDate ? startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'soon'}`}
           </div>
         </div>
       )}
