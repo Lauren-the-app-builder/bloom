@@ -2696,11 +2696,14 @@ function ExerciseProgressView({ exerciseName, onClose }) {
 // a Preview button. Voice recording is intentionally not offered here — it's
 // a kept-it-simple decision so this surface doesn't keep breaking.
 function RestTimerScreen({ onBack }) {
-  const [phrase, setPhrase] = useState(() => localStorage.getItem("bloom:restPhrase") || DEFAULT_REST_PHRASE);
+  const initialPhrase = useRef(localStorage.getItem("bloom:restPhrase") || DEFAULT_REST_PHRASE);
+  const phraseRef = useRef(null);
   const [voiceName, setVoiceName] = useState(() => localStorage.getItem("bloom:restVoiceName") || "");
   const [voices, setVoices] = useState(() => (typeof window !== "undefined" && window.speechSynthesis ? window.speechSynthesis.getVoices() : []));
 
   // System voices load asynchronously on some platforms (notably iOS Safari).
+  // Voices state changes here MUST NOT re-mount or re-render the textarea,
+  // hence the textarea is uncontrolled (defaultValue + ref).
   useEffect(() => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
     const load = () => setVoices(window.speechSynthesis.getVoices() || []);
@@ -2709,10 +2712,14 @@ function RestTimerScreen({ onBack }) {
     return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
   }, []);
 
-  const updatePhrase = (v) => {
-    setPhrase(v);
+  // Persist on blur, and one final flush when the screen closes — so typing
+  // never round-trips through React state and the textarea can't lose focus.
+  const persistPhrase = () => {
+    const v = phraseRef.current?.value ?? "";
     try { localStorage.setItem("bloom:restPhrase", v); } catch {}
   };
+  useEffect(() => () => { persistPhrase(); }, []);
+
   const updateVoice = (v) => {
     setVoiceName(v);
     try { localStorage.setItem("bloom:restVoiceName", v); } catch {}
@@ -2720,7 +2727,8 @@ function RestTimerScreen({ onBack }) {
   const preview = () => {
     try {
       if (!window.speechSynthesis) return;
-      const u = new SpeechSynthesisUtterance(phrase || DEFAULT_REST_PHRASE);
+      const live = phraseRef.current?.value || DEFAULT_REST_PHRASE;
+      const u = new SpeechSynthesisUtterance(live);
       if (voiceName) {
         const v = voices.find(x => x.name === voiceName);
         if (v) u.voice = v;
@@ -2749,8 +2757,9 @@ function RestTimerScreen({ onBack }) {
             Spoken when the rest timer ends. Type whatever you want.
           </p>
           <textarea
-            value={phrase}
-            onChange={(e) => updatePhrase(e.target.value)}
+            ref={phraseRef}
+            defaultValue={initialPhrase.current}
+            onBlur={persistPhrase}
             placeholder={DEFAULT_REST_PHRASE}
             rows={2}
             autoComplete="off"
