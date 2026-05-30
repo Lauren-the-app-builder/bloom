@@ -2748,16 +2748,21 @@ function RestTimerScreen({ onBack }) {
           <p style={{ fontSize: 12, color: c.muted, margin: "0 0 12px", lineHeight: 1.4 }}>
             Spoken when the rest timer ends. Type whatever you want.
           </p>
-          <input
-            type="text"
+          <textarea
             value={phrase}
             onChange={(e) => updatePhrase(e.target.value)}
             placeholder={DEFAULT_REST_PHRASE}
+            rows={2}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="sentences"
+            spellCheck={false}
             style={{
               width: "100%", boxSizing: "border-box",
               padding: "10px 12px", borderRadius: 12,
               border: `1px solid ${c.line}`, background: "white",
-              fontSize: 14, fontFamily: "inherit", color: c.charcoal,
+              fontSize: 16, fontFamily: "inherit", color: c.charcoal,
+              resize: "vertical", minHeight: 44,
             }}
           />
         </div>
