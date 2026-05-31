@@ -1859,14 +1859,6 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
           <button onClick={finishWorkout} style={{ background: c.rosedeep, color: "white", border: "none", padding: "8px 16px", borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Finish</button>
         </div>
         <p style={{ fontSize: 16, fontWeight: 600, margin: "10px 0 0", textAlign: "center" }}>{workout.name}</p>
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 6 }}>
-          <button
-            onClick={() => setShowBugReport(true)}
-            style={{ background: "none", border: "none", color: c.muted, fontSize: 11, cursor: "pointer", padding: "2px 6px", display: "flex", alignItems: "center", gap: 4 }}
-          >
-            🐞 Report a bug{bugNotes.length > 0 ? ` · ${bugNotes.length}` : ""}
-          </button>
-        </div>
       </div>
 
       {/* deload note + coach button */}
@@ -2224,6 +2216,14 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
             style={{ width: "100%", background: c.charcoal, color: "white", border: "none", padding: 16, borderRadius: 16, fontSize: 15, fontWeight: 600, cursor: "pointer" }}
           >
             Done
+          </button>
+          {/* Report bugs — moved here from the workout header, where it was
+              just visual noise mid-workout. */}
+          <button
+            onClick={() => setShowBugReport(true)}
+            style={{ width: "100%", background: "none", color: c.muted, border: `1px solid ${c.line}`, padding: "10px 0", marginTop: 10, borderRadius: 12, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+          >
+            🐞 Report bugs{bugNotes.length > 0 ? ` · ${bugNotes.length}` : ""}
           </button>
           {/* Escape hatch — if Finish was tapped by accident, delete the just-
               recorded session and return to the workout with sets intact. */}
