@@ -350,6 +350,7 @@ export default function BloomApp() {
   const [showLibrary, setShowLibrary] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showRestTimer, setShowRestTimer] = useState(false);
   const [showExProgress, setShowExProgress] = useState(null); // exercise name or null
   const WREN_GREETING = { from: "coach", text: "Hi Lauren! I'm Wren 🌙 — your coach. I can see your workouts, PRs, schedule, and history. Try asking 'what should I do today?' or 'am I plateauing on hip thrust?'" };
   const [chatHistory, setChatHistory] = useLocalState("chatHistory", []); // [{id, title, createdAt, updatedAt, messages}]
@@ -539,10 +540,13 @@ export default function BloomApp() {
           <SettingsModal
             onClose={() => setShowSettings(false)}
             onExport={() => { setShowSettings(false); setShowExport(true); }}
+            onOpenRestTimer={() => { setShowSettings(false); setShowRestTimer(true); }}
             unit={unit}
             setUnit={setUnit}
           />
         )}
+
+        {showRestTimer && <RestTimerScreen onBack={() => setShowRestTimer(false)} />}
 
         {showExProgress && (
           <ExerciseProgressView
@@ -1736,7 +1740,9 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
       onFinish();
       return;
     }
-    recordSession({ workoutName: workout.name, tag: workout.tag || null, exercises: exMap, durationSec: elapsed });
+    // Capture finishedAt explicitly so we can identify (and undo) the record.
+    const finishedAt = Date.now();
+    recordSession({ workoutName: workout.name, tag: workout.tag || null, exercises: exMap, durationSec: elapsed, finishedAt });
     // Compute summary stats + per-exercise progression vs last session.
     const totalSets = Object.values(exMap).reduce((n, arr) => n + arr.length, 0);
     const exNames = Object.keys(exMap);
@@ -1837,7 +1843,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
     if (Object.keys(updatedPRs).length > 0) {
       save("prs", updatedPRs);
     }
-    setFinishSummary({ totalSets, exNames, durationSec: elapsed, progressions, newPRs });
+    setFinishSummary({ totalSets, exNames, durationSec: elapsed, progressions, newPRs, finishedAt });
   };
 
   return (
@@ -2218,6 +2224,18 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
             style={{ width: "100%", background: c.charcoal, color: "white", border: "none", padding: 16, borderRadius: 16, fontSize: 15, fontWeight: 600, cursor: "pointer" }}
           >
             Done
+          </button>
+          {/* Escape hatch — if Finish was tapped by accident, delete the just-
+              recorded session and return to the workout with sets intact. */}
+          <button
+            onClick={() => {
+              if (!confirm("Resume the workout? This deletes the just-recorded session from your history; your sets remain in the workout so you can keep going.")) return;
+              if (finishSummary?.finishedAt) deleteSession(finishSummary.finishedAt);
+              setFinishSummary(null);
+            }}
+            style={{ width: "100%", background: "none", color: c.muted, border: "none", padding: "10px 0 4px", fontSize: 13, fontWeight: 500, cursor: "pointer", textDecoration: "underline", fontFamily: "inherit" }}
+          >
+            Tapped Finish by mistake? Resume workout
           </button>
         </div>
       )}
@@ -2732,39 +2750,44 @@ function ExerciseProgressView({ exerciseName, onClose }) {
 // a Preview button. Voice recording is intentionally not offered here — it's
 // a kept-it-simple decision so this surface doesn't keep breaking.
 function RestTimerScreen({ onBack }) {
-  const initialPhrase = useRef(localStorage.getItem("bloom:restPhrase") || DEFAULT_REST_PHRASE);
-  const phraseRef = useRef(null);
+  // Controlled state — but with deduplicated voice loading so re-renders
+  // happen ONLY when the user actually types, not whenever iOS re-fires the
+  // voiceschanged event during speech engine init.
+  const [phrase, setPhrase] = useState(() => localStorage.getItem("bloom:restPhrase") || DEFAULT_REST_PHRASE);
   const [voiceName, setVoiceName] = useState(() => localStorage.getItem("bloom:restVoiceName") || "");
   const [voices, setVoices] = useState(() => (typeof window !== "undefined" && window.speechSynthesis ? window.speechSynthesis.getVoices() : []));
 
-  // System voices load asynchronously on some platforms (notably iOS Safari).
-  // Voices state changes here MUST NOT re-mount or re-render the textarea,
-  // hence the textarea is uncontrolled (defaultValue + ref).
   useEffect(() => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
-    const load = () => setVoices(window.speechSynthesis.getVoices() || []);
+    const load = () => {
+      const fresh = window.speechSynthesis.getVoices() || [];
+      setVoices(prev => {
+        // Only update state if the voice list actually changed — iOS Safari
+        // fires voiceschanged repeatedly during init and each re-render here
+        // was costing the textarea focus on the user's device.
+        if (prev.length === fresh.length && prev.every((v, i) => v.name === fresh[i]?.name)) return prev;
+        return fresh;
+      });
+    };
     load();
     window.speechSynthesis.addEventListener("voiceschanged", load);
     return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
   }, []);
 
-  // Persist on blur, and one final flush when the screen closes — so typing
-  // never round-trips through React state and the textarea can't lose focus.
-  const persistPhrase = () => {
-    const v = phraseRef.current?.value ?? "";
+  const onPhraseChange = (e) => {
+    const v = e.target.value;
+    setPhrase(v);
     try { localStorage.setItem("bloom:restPhrase", v); } catch {}
   };
-  useEffect(() => () => { persistPhrase(); }, []);
-
-  const updateVoice = (v) => {
+  const onVoiceChange = (e) => {
+    const v = e.target.value;
     setVoiceName(v);
     try { localStorage.setItem("bloom:restVoiceName", v); } catch {}
   };
   const preview = () => {
     try {
       if (!window.speechSynthesis) return;
-      const live = phraseRef.current?.value || DEFAULT_REST_PHRASE;
-      const u = new SpeechSynthesisUtterance(live);
+      const u = new SpeechSynthesisUtterance(phrase || DEFAULT_REST_PHRASE);
       if (voiceName) {
         const v = voices.find(x => x.name === voiceName);
         if (v) u.voice = v;
@@ -2775,33 +2798,42 @@ function RestTimerScreen({ onBack }) {
     } catch {}
   };
 
-  const btn = { width: "100%", background: c.white, border: `1px solid ${c.line}`, borderRadius: 14, padding: 14, fontSize: 13, fontWeight: 600, cursor: "pointer", color: c.charcoal, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit" };
-
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 400 }} onClick={onBack}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: c.cream, width: "100%", maxWidth: 430, borderRadius: "28px 28px 0 0", padding: 24, maxHeight: "90vh", overflowY: "auto" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 18 }}>
-          <button onClick={onBack} style={{ background: "none", border: "none", color: c.charcoal, cursor: "pointer", padding: 4, display: "flex", alignItems: "center" }} aria-label="Back">
-            <ChevronLeft size={20} />
-          </button>
-          <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>Rest timer</h2>
-        </div>
+    <div style={{
+      position: "fixed", inset: 0, background: c.cream, zIndex: 350,
+      display: "flex", flexDirection: "column",
+      maxWidth: 430, margin: "0 auto",
+    }}>
+      {/* Sticky header */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 6,
+        padding: "calc(env(safe-area-inset-top) + 14px) 16px 14px",
+        borderBottom: `1px solid ${c.line}`, flexShrink: 0, background: c.cream,
+      }}>
+        <button onClick={onBack} style={{ background: "none", border: "none", padding: 6, display: "flex", alignItems: "center", color: c.charcoal, cursor: "pointer", margin: "-6px 0 -6px -6px" }} aria-label="Back">
+          <ChevronLeft size={22} />
+        </button>
+        <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>Rest timer</h2>
+      </div>
 
+      {/* Scrollable body */}
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "20px 20px calc(env(safe-area-inset-bottom) + 24px)", WebkitOverflowScrolling: "touch" }}>
         <div style={{ background: c.white, border: `1px solid ${c.line}`, borderRadius: 16, padding: 16, marginBottom: 14 }}>
           <p style={{ fontSize: 11, fontWeight: 700, color: c.rosedeep, margin: "0 0 8px", letterSpacing: 0.5 }}>MESSAGE</p>
           <p style={{ fontSize: 12, color: c.muted, margin: "0 0 12px", lineHeight: 1.4 }}>
             Spoken when the rest timer ends. Type whatever you want.
           </p>
           <textarea
-            ref={phraseRef}
-            defaultValue={initialPhrase.current}
-            onBlur={persistPhrase}
+            value={phrase}
+            onChange={onPhraseChange}
             placeholder={DEFAULT_REST_PHRASE}
             rows={2}
             autoComplete="off"
             autoCorrect="off"
             autoCapitalize="sentences"
             spellCheck={false}
+            inputMode="text"
+            enterKeyHint="done"
             style={{
               width: "100%", boxSizing: "border-box",
               padding: "10px 12px", borderRadius: 12,
@@ -2821,12 +2853,12 @@ function RestTimerScreen({ onBack }) {
           </p>
           <select
             value={voiceName}
-            onChange={(e) => updateVoice(e.target.value)}
+            onChange={onVoiceChange}
             style={{
               width: "100%", boxSizing: "border-box",
               padding: "10px 12px", borderRadius: 12,
               border: `1px solid ${c.line}`, background: "white",
-              fontSize: 14, fontFamily: "inherit", color: c.charcoal,
+              fontSize: 16, fontFamily: "inherit", color: c.charcoal,
             }}
           >
             <option value="">System default</option>
@@ -2836,7 +2868,11 @@ function RestTimerScreen({ onBack }) {
           </select>
         </div>
 
-        <button onClick={preview} style={{ ...btn, background: c.rosedeep, color: "white", border: "none" }}>
+        <button onClick={preview} style={{
+          width: "100%", padding: 14, borderRadius: 14, border: "none", cursor: "pointer",
+          background: c.rosedeep, color: "white", fontSize: 14, fontWeight: 700, fontFamily: "inherit",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+        }}>
           <Play size={14} /> Preview
         </button>
       </div>
@@ -2844,9 +2880,7 @@ function RestTimerScreen({ onBack }) {
   );
 }
 
-function SettingsModal({ onClose, onExport, unit, setUnit }) {
-  const [showRestTimer, setShowRestTimer] = useState(false);
-
+function SettingsModal({ onClose, onExport, onOpenRestTimer, unit, setUnit }) {
   const btn = { width: "100%", background: c.white, border: `1px solid ${c.line}`, borderRadius: 14, padding: 14, fontSize: 13, fontWeight: 600, cursor: "pointer", color: c.charcoal, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit" };
 
   return (
@@ -2857,8 +2891,8 @@ function SettingsModal({ onClose, onExport, unit, setUnit }) {
           <button onClick={onClose} style={{ background: "none", border: "none", color: c.muted, cursor: "pointer" }}><X size={20} /></button>
         </div>
 
-        {/* Rest timer → opens its own page */}
-        <button onClick={() => setShowRestTimer(true)} style={{ ...btn, marginBottom: 10, justifyContent: "space-between" }}>
+        {/* Rest timer → opens its own page (Settings closes, Rest timer takes over) */}
+        <button onClick={onOpenRestTimer} style={{ ...btn, marginBottom: 10, justifyContent: "space-between" }}>
           <span>Rest timer</span>
           <ChevronRight size={16} color={c.muted} />
         </button>
@@ -2897,7 +2931,6 @@ function SettingsModal({ onClose, onExport, unit, setUnit }) {
           </button>
         )}
       </div>
-      {showRestTimer && <RestTimerScreen onBack={() => setShowRestTimer(false)} />}
     </div>
   );
 }

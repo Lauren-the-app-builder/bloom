@@ -207,20 +207,39 @@ export function saveProgram(program) {
 // Walk every session in the active program(s), calling mutator(sess) when the
 // session's label matches `label`. mutator should mutate sess.exercises in
 // place and return true if it changed anything. Saves once if anything moved.
+//
+// Label matching is intentionally permissive — Wren-generated programs have
+// shown up with a few different shapes:
+//   • Array sessions with session_label: "B"
+//   • Array sessions with label: "Session B" or name: "Session B"
+//   • Object-shaped sessions keyed by "B"
+//   • No label at all (fall back to array position: 0→A, 1→B, 2→C)
+// All of those should be treated as Session B for "B" label matching.
 function mutateProgramSessions(label, mutator) {
   try {
+    const target = String(label).toUpperCase().trim();
     const list = load('wrenProgram', []);
     let changed = false;
+
+    const labelMatches = (raw, idx) => {
+      const cleaned = String(raw || '').toUpperCase().replace(/^SESSION\s+/, '').trim();
+      if (cleaned) return cleaned === target;
+      // No declared label — fall back to position (A=0, B=1, C=2, ...).
+      return String.fromCharCode(65 + idx) === target;
+    };
+
     for (const entry of list) {
       const program = entry?.program_json || entry;
       if (!program?.weeks?.length) continue;
       for (const wk of program.weeks) {
-        const sessions = Array.isArray(wk?.sessions)
-          ? wk.sessions
-          : (wk?.sessions && typeof wk.sessions === 'object' ? Object.values(wk.sessions) : []);
-        for (const sess of sessions) {
-          if (String(sess?.session_label || '').toUpperCase() !== String(label).toUpperCase()) continue;
-          if (!Array.isArray(sess.exercises)) continue;
+        const raw = wk?.sessions;
+        if (!raw) continue;
+        const items = Array.isArray(raw)
+          ? raw.map((s, i) => ({ sess: s, raw: s?.session_label || s?.label || s?.name, idx: i }))
+          : Object.entries(raw).map(([k, s], i) => ({ sess: s, raw: s?.session_label || s?.label || s?.name || k, idx: i }));
+        for (const { sess, raw: rawLabel, idx } of items) {
+          if (!labelMatches(rawLabel, idx)) continue;
+          if (!Array.isArray(sess?.exercises)) continue;
           if (mutator(sess)) changed = true;
         }
       }
