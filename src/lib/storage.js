@@ -246,6 +246,29 @@ export function ensureSessionAOrder() {
   });
 }
 
+// Idempotent migration: Session B replaces "Bent-over barbell row" (which
+// Lauren swapped out mid-workout) with "Straight arm pulldown" (3x12-15).
+// Matches with or without a hyphen and with the legacy "(overhand, upright
+// torso)" parenthetical.
+export function ensureSessionBPulldown() {
+  const lower = (s) => String(s || '').toLowerCase();
+  return mutateProgramSessions('B', (sess) => {
+    const idx = sess.exercises.findIndex(e => {
+      const n = lower(e?.name);
+      return n.includes('bent-over barbell row') || n.includes('bent over barbell row');
+    });
+    if (idx === -1) return false;
+    const old = sess.exercises[idx] || {};
+    sess.exercises[idx] = {
+      ...old,
+      name: 'Straight arm pulldown',
+      reps: '12-15',
+      superset_with: undefined,
+    };
+    return true;
+  });
+}
+
 // Idempotent migration: Session C ends with "Seated leg curl" (3x10-12). Both
 // the original "Barbell upright row" and the earlier intermediate swap
 // ("Lying leg curl") get rewritten — and an already-seated entry is a noop.

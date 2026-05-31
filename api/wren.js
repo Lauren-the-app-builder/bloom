@@ -100,7 +100,7 @@ Session B (default Wednesday):
 3. Dumbbell lateral raise — 3x12-15
 4. Machine hip thrust — 3x10-12
 5. Hip abductor + Hip adductor (SUPERSET) — 3x15 / 3x15
-6. Bent-over barbell row (overhand, upright torso) — 2x12
+6. Straight arm pulldown — 3x12-15
 
 Session C (default Friday):
 1. Standing barbell overhead press — 3x6-8
@@ -146,7 +146,12 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
 
 4. When you DO regenerate, include the COMPLETE 12-week program — all weeks, all sessions, all exercises with sets, reps, and target weights. Never send a partial program.
 
-5. NEVER write "bloom-actions", "bloom_actions", JSON, or code blocks in your text response.`;
+5. MID-WORKOUT CHANGES (when the user message indicates mid-workout context): when Lauren asks for any exercise change during an active workout — swap one exercise for another, add an exercise, remove an exercise, change reps/weight — you MUST FIRST ask whether the change is "just for today, or always?" Do NOT emit any action in that same turn. Wait for her answer. Once she answers:
+   - "Just for today" / "today" / "today only": emit ONLY the matching live-workout action(s) (set_target_weight, set_target, set_rest, add_set, add_exercise, remove_exercise, reorder). Do NOT emit edit_workout — the program stays as-is.
+   - "Always" / "permanently" / "going forward": emit BOTH (a) the live-workout action(s) so the current workout updates immediately AND (b) the matching edit_workout action(s) so the program is permanently updated across all 12 weeks. For a swap, that's typically a remove_exercise + add_exercise live pair plus an edit_workout with swap_from + swap_to.
+   If she's ambiguous, ask again — never guess. Saying "got it" or "done" in text does not change anything; you must emit the actions.
+
+6. NEVER write "bloom-actions", "bloom_actions", JSON, or code blocks in your text response.`;
 
   // Build context block for the user message
   // Build lift bests summary

@@ -53,7 +53,7 @@ import {
   Link2,
   Link2Off,
 } from "lucide-react";
-import { useLocalState, recordSession, getSessions, getLastSession, updateSession, deleteSession, load, save, getActiveProgram, getMissedSessions, ensureSessionAOrder, ensureSessionCLegCurl } from "./lib/storage";
+import { useLocalState, recordSession, getSessions, getLastSession, updateSession, deleteSession, load, save, getActiveProgram, getMissedSessions, ensureSessionAOrder, ensureSessionBPulldown, ensureSessionCLegCurl } from "./lib/storage";
 import { supabase, isSupabaseConfigured } from "./lib/supabase";
 import { subscribeToPush, scheduleRestPush, cancelRestPush } from "./lib/push";
 import WrenView from "./components/wren/WrenView";
@@ -269,10 +269,11 @@ function estimateMinutes(workout, sessions) {
 export default function BloomApp() {
   const [tab, setTab] = useState("home");
   // Idempotent program fixups: reorder Session A (lat pulldown → cable face
-  // pull) and swap Session C's barbell upright row for a lying leg curl.
-  // Re-run after a sync pulls a fresh program from the server.
+  // pull), swap Session B's bent-over row for straight arm pulldown, and
+  // swap Session C's barbell upright row for a seated leg curl. Re-run after
+  // a sync pulls a fresh program from the server.
   useEffect(() => {
-    const runFixups = () => { ensureSessionAOrder(); ensureSessionCLegCurl(); };
+    const runFixups = () => { ensureSessionAOrder(); ensureSessionBPulldown(); ensureSessionCLegCurl(); };
     runFixups();
     window.addEventListener("bloom:synced", runFixups);
     return () => window.removeEventListener("bloom:synced", runFixups);
