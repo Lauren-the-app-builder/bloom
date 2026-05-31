@@ -246,16 +246,18 @@ export function ensureSessionAOrder() {
   });
 }
 
-// Idempotent migration: Session B replaces "Bent-over barbell row" (which
+// Idempotent migration: Session B replaces any bent-over row variant (which
 // Lauren swapped out mid-workout) with "Straight arm pulldown" (3x12-15).
-// Matches with or without a hyphen and with the legacy "(overhand, upright
-// torso)" parenthetical.
+// Matches "bent" + "row" in any spelling/order — Bent-over barbell row, Bent
+// over barbell row, Barbell bent-over row, Bent over row, etc. Skips
+// already-migrated rows so it's safe to re-run.
 export function ensureSessionBPulldown() {
   const lower = (s) => String(s || '').toLowerCase();
   return mutateProgramSessions('B', (sess) => {
     const idx = sess.exercises.findIndex(e => {
       const n = lower(e?.name);
-      return n.includes('bent-over barbell row') || n.includes('bent over barbell row');
+      if (n.includes('straight arm pulldown') || n.includes('straight-arm pulldown')) return false;
+      return /bent/.test(n) && /row/.test(n);
     });
     if (idx === -1) return false;
     const old = sess.exercises[idx] || {};

@@ -48,9 +48,19 @@ export default function ProgramView() {
     return matches.sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0))[0];
   };
   // All logged sets for an exercise in a session (in the order performed).
+  // Matches case-insensitively and trims whitespace so program/log names
+  // don't need to agree exactly on capitalisation (e.g. "Straight arm
+  // pulldown" vs "Straight Arm Pulldown" still resolve to the same logged
+  // sets).
   const loggedSets = (loggedSession, exName) => {
-    const setsArr = loggedSession?.exercises?.[exName];
-    return setsArr && setsArr.length ? setsArr : null;
+    if (!loggedSession?.exercises || !exName) return null;
+    const target = String(exName).toLowerCase().trim();
+    for (const [name, setsArr] of Object.entries(loggedSession.exercises)) {
+      if (String(name).toLowerCase().trim() === target && Array.isArray(setsArr) && setsArr.length) {
+        return setsArr;
+      }
+    }
+    return null;
   };
 
   if (!program || !program.weeks?.length) {
