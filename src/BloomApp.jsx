@@ -12,6 +12,41 @@ const toNum = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+// Default rest time when the exercise isn't in EXERCISE_DB (so its custom
+// restSec isn't available). Compounds get 120s, isolation gets 90s. Used as
+// the last fallback in every rest lookup. Order matters — isolation
+// overrides are checked first so "straight arm pulldown" doesn't match the
+// generic "pulldown" compound pattern.
+function defaultRestSec(name) {
+  const n = String(name || "").toLowerCase();
+  const isolationPatterns = [
+    /straight.?arm pulldown/, // single-joint despite "pulldown"
+    /face pull/,
+    /lateral raise/,
+    /\bfly\b/, /\bflies\b/,
+    /curl/,                   // bicep curl, leg curl
+    /extension/,              // leg extension, tricep extension
+    /pushdown/,               // tricep pushdown
+    /raise/,                  // calf raise, front raise, etc.
+    /kickback/,
+    /abductor/, /adductor/,
+    /shrug/,
+  ];
+  if (isolationPatterns.some((p) => p.test(n))) return 90;
+  const compoundPatterns = [
+    /press/,                  // bench, shoulder, overhead, incline
+    /squat/, /deadlift/,
+    /\brow\b/,
+    /pulldown/,               // lat pulldown
+    /pull-?up/, /chin-?up/,
+    /hip thrust/, /leg press/,
+    /lunge/, /step-?up/,
+    /\bdip\b/,
+  ];
+  if (compoundPatterns.some((p) => p.test(n))) return 120;
+  return 90;
+}
+
 // Progressive overload bump: 5% of current weight, rounded to the nearest
 // 0.5 (kg) or 1 (lb), with a sensible floor so tiny lifts still see progress.
 function bumpWeight(currentWeight, unit, isLower) {
@@ -1002,7 +1037,7 @@ function WorkoutPreview({ workout, onClose, onStart, onBackfill, onEdit, onExerc
                     )}
                   </div>
                   {(() => {
-                    const restSec = workout.rests?.[exName] || ex?.restSec || 90;
+                    const restSec = workout.rests?.[exName] || ex?.restSec || defaultRestSec(exName);
                     return (
                       <p style={{ fontSize: 12, color: c.muted, margin: "4px 0 0" }}>
                         {ex?.muscle || "—"} · Rest {Math.floor(restSec / 60)}:{String(restSec % 60).padStart(2, "0")}
@@ -1284,7 +1319,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
     try {
       // Tell Wren what actions she can take during a live workout.
       const exNames = sets.map((ex) => ex.name).join(", ");
-      const restInfo = sets.map((ex) => `${ex.name}: rest ${liveRests[ex.name] || allExercises.find(e=>e.name===ex.name)?.restSec || 90}s`).join(", ");
+      const restInfo = sets.map((ex) => `${ex.name}: rest ${liveRests[ex.name] || allExercises.find(e=>e.name===ex.name)?.restSec || defaultRestSec(ex.name)}s`).join(", ");
       const augmented = `${current}\n\n[Mid-workout context: current exercises = ${exNames}. Rest times: ${restInfo}. ` +
         `You can return actions to modify the live session: ` +
         `{type:"set_target_weight",exercise,weight}, ` +
@@ -1588,7 +1623,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
       if (startRest) {
         const customRest = liveRests[name];
         const ex = allExercises.find((e) => e.name === name);
-        const rest = customRest || ex?.restSec || 90;
+        const rest = customRest || ex?.restSec || defaultRestSec(name);
         setRestTimer({ endsAt: Date.now() + rest * 1000, total: rest, exercise: name });
         // Schedule a server-side push notification as backup for when the app
         // is killed. Fire-and-forget; also subscribes to push on first call.
@@ -1937,7 +1972,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
                     <p style={{ fontSize: 11, color: c.muted, margin: 0 }}>{exData?.muscle}</p>
                     <button
                       onClick={() => {
-                        const cur = liveRests[ex.name] || exData?.restSec || 90;
+                        const cur = liveRests[ex.name] || exData?.restSec || defaultRestSec(ex.name);
                         const mins = prompt("Rest time (minutes):", (cur / 60).toFixed(1));
                         if (mins !== null && isFinite(parseFloat(mins))) {
                           setLiveRests((r) => ({ ...r, [ex.name]: Math.round(parseFloat(mins) * 60) }));
@@ -1946,7 +1981,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
                       style={{ background: c.blushLight, border: "none", borderRadius: 999, padding: "2px 8px", fontSize: 10, fontWeight: 600, color: c.rosedeep, cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}
                     >
                       <Timer size={10} /> {(() => {
-                        const sec = liveRests[ex.name] || exData?.restSec || 90;
+                        const sec = liveRests[ex.name] || exData?.restSec || defaultRestSec(ex.name);
                         const m = Math.floor(sec / 60);
                         const r = sec % 60;
                         return r === 0 ? `${m}m` : `${m}:${String(r).padStart(2, "0")}`;
