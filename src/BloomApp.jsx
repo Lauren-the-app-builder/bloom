@@ -1534,8 +1534,10 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
     } catch {}
   };
 
-  // In-workout bug notes — collected locally, emailed on demand.
+  // In-workout bug notes — collected locally, emailed on demand from the
+  // finish-summary screen. During the workout you can ADD notes (no email).
   const [showBugReport, setShowBugReport] = useState(false);
+  const [bugReportMode, setBugReportMode] = useState("full"); // "full" on Done, "quick" mid-workout
   const [bugDraft, setBugDraft] = useState("");
   const [bugNotes, setBugNotes] = useState(() => {
     try { return JSON.parse(localStorage.getItem("bloom:bugNotes") || "[]"); } catch { return []; }
@@ -1569,12 +1571,9 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
     });
     // 3. Vibration.
     try { navigator.vibrate?.([300, 100, 300, 100, 500]); } catch {}
-    // 4. System notification (fires from page — works when app is in foreground/recently backgrounded).
-    try {
-      if ("Notification" in window && Notification.permission === "granted") {
-        new Notification("Bloom", { body: "Next set, bitch!", tag: "bloom-rest-" + Date.now(), requireInteraction: false });
-      }
-    } catch {}
+    // (The system notification is fired by the service worker — scheduled via
+    // scheduleRestPush when the rest timer starts — so the page intentionally
+    // does NOT fire its own Notification here. Doing both produced duplicates.)
   };
 
   const restDonePlayedFor = useRef(null); // tracks which timer instance was played
@@ -1859,6 +1858,14 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
           <button onClick={finishWorkout} style={{ background: c.rosedeep, color: "white", border: "none", padding: "8px 16px", borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Finish</button>
         </div>
         <p style={{ fontSize: 16, fontWeight: 600, margin: "10px 0 0", textAlign: "center" }}>{workout.name}</p>
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 6 }}>
+          <button
+            onClick={() => { setBugReportMode("quick"); setShowBugReport(true); }}
+            style={{ background: "none", border: "none", color: c.muted, fontSize: 11, cursor: "pointer", padding: "2px 6px", display: "flex", alignItems: "center", gap: 4 }}
+          >
+            🐞 Note a bug{bugNotes.length > 0 ? ` · ${bugNotes.length}` : ""}
+          </button>
+        </div>
       </div>
 
       {/* deload note + coach button */}
@@ -1940,7 +1947,10 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
                         const realEi = grp.indices[idx];
                         return (
                           <div key={idx} style={{ display: "grid", gridTemplateColumns: "16px 1fr 1fr 1fr 28px", gap: 5, alignItems: "center", marginBottom: 4 }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: c.rosedeep }}>{String.fromCharCode(65 + idx)}</span>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: c.rosedeep, lineHeight: 1 }}>{String.fromCharCode(65 + idx)}</span>
+                              {row.targetReps && <span style={{ fontSize: 8, color: c.rosedeep, fontWeight: 700, lineHeight: 1, marginTop: 1 }}>×{row.targetReps}</span>}
+                            </div>
                             <span style={{ fontSize: 10, color: c.muted }}>{row.prevReps != null && row.prevWeight != null ? `${row.prevReps}×${row.prevWeight}${unit}` : "—"}</span>
                             <input value={row.reps} onChange={(e) => updateRow(realEi, ri, "reps", e.target.value)} placeholder="reps" style={inputStyle(row.done)} />
                             <input type="text" inputMode="decimal" value={row.weight} onChange={(e) => updateRow(realEi, ri, "weight", e.target.value)} placeholder={row.targetWeight || unit} style={inputStyle(row.done)} />
@@ -2131,10 +2141,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
 
       {/* finish summary */}
       {finishSummary && (
-        <div style={{ position: "fixed", inset: 0, background: c.cream, zIndex: 250, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", padding: "24px 24px calc(40px + env(safe-area-inset-bottom)) 24px", maxWidth: 430, margin: "0 auto", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
-          <div style={{ width: 80, height: 80, borderRadius: "50%", background: `linear-gradient(135deg, ${c.rose}, ${c.blush})`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20, boxShadow: "0 12px 28px rgba(180,140,200,0.35)" }}>
-            <Check size={42} color="white" strokeWidth={3} />
-          </div>
+        <div style={{ position: "fixed", inset: 0, background: c.cream, zIndex: 250, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", padding: "32px 24px calc(40px + env(safe-area-inset-bottom)) 24px", maxWidth: 430, margin: "0 auto", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
           <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, letterSpacing: -0.5, textAlign: "center", background: `linear-gradient(90deg, ${c.rosedeep}, ${c.rose})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
             Workout complete
           </h1>
@@ -2172,34 +2179,36 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
               </div>
             </div>
           )}
-          {/* Per-exercise breakdown: per-set ✓/✗ + what to do next time */}
+          {/* Per-exercise breakdown — one clear status per exercise so it's
+              obvious where there was improvement. No per-set dots, no left
+              bar, no Wren reaction; the recommendation reads as a single
+              short sentence below the change. */}
           <div style={{ width: "100%", background: c.white, border: `1px solid ${c.line}`, borderRadius: 16, padding: 16, marginBottom: 20 }}>
             <p style={{ fontSize: 11, fontWeight: 700, color: c.muted, margin: 0, letterSpacing: 0.5 }}>HOW IT WENT</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
-              {(finishSummary.progressions || []).map((p, i) => (
-                <div key={i} style={{ borderLeft: `3px solid ${p.onTrack ? "#4a8a5a" : "#d98a3d"}`, paddingLeft: 10 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                    <p style={{ fontSize: 13, fontWeight: 600, margin: 0, color: c.charcoal, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</p>
-                    <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                      {(p.sets && p.sets.length ? p.sets : [null]).map((ok, j) => (
-                        <span key={j} title={`Set ${j + 1}`} style={{
-                          width: 18, height: 18, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-                          background: ok === true ? "#e6f4ea" : ok === false ? "#fbe7da" : c.cream,
-                          color: ok === true ? "#4a8a5a" : ok === false ? "#d98a3d" : c.muted,
-                          fontSize: 11, fontWeight: 800,
-                        }}>
-                          {ok === true ? "✓" : ok === false ? "✕" : "·"}
-                        </span>
-                      ))}
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 12 }}>
+              {(finishSummary.progressions || []).map((p, i) => {
+                // Pick a single status badge per exercise. Stall takes priority
+                // (so the user notices it), then progress, then "new", then "—".
+                const stalled = !p.onTrack && (p.reco || "").startsWith("Stalled");
+                let badge = null;
+                if (stalled) badge = { label: "Stalled", fg: "#a85a1a", bg: "#fbe7da" };
+                else if (p.status === "weight_up") badge = { label: `↑ ${p.detail}`, fg: "#2e7d4a", bg: "#e6f4ea" };
+                else if (p.status === "reps_up") badge = { label: `↑ ${p.detail}`, fg: "#2e7d4a", bg: "#e6f4ea" };
+                else if (p.status === "new") badge = { label: "New", fg: c.rosedeep, bg: c.blushLight };
+                else badge = { label: "—", fg: c.muted, bg: "transparent" };
+
+                return (
+                  <div key={i}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                      <p style={{ fontSize: 14, fontWeight: 600, margin: 0, color: c.charcoal, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</p>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: badge.fg, background: badge.bg, padding: badge.bg === "transparent" ? "0" : "3px 9px", borderRadius: 999, flexShrink: 0 }}>{badge.label}</span>
                     </div>
+                    <p style={{ fontSize: 11, color: c.muted, margin: "3px 0 0", lineHeight: 1.45 }}>{p.reco}</p>
                   </div>
-                  <p style={{ fontSize: 11, color: c.muted, margin: "4px 0 0", lineHeight: 1.45 }}>{p.reco}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
-          {/* Wren's post-session reaction */}
-          <PostSessionReaction sessionData={finishSummary} workout={workout} />
 
           <button
             onClick={() => { setFinishSummary(null); onFinish(); }}
@@ -2210,7 +2219,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
           {/* Report bugs — moved here from the workout header, where it was
               just visual noise mid-workout. */}
           <button
-            onClick={() => setShowBugReport(true)}
+            onClick={() => { setBugReportMode("full"); setShowBugReport(true); }}
             style={{ width: "100%", background: "none", color: c.muted, border: `1px solid ${c.line}`, padding: "10px 0", marginTop: 10, borderRadius: 12, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
           >
             🐞 Report bugs{bugNotes.length > 0 ? ` · ${bugNotes.length}` : ""}
@@ -2280,7 +2289,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
               Add to list
             </button>
 
-            {bugNotes.length > 0 && (
+            {bugNotes.length > 0 && bugReportMode === "full" && (
               <div style={{ marginTop: 18 }}>
                 <p style={{ fontSize: 11, fontWeight: 700, color: c.muted, letterSpacing: 0.5, margin: "0 0 8px" }}>SAVED · {bugNotes.length}</p>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -2317,6 +2326,11 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
                   </button>
                 </div>
               </div>
+            )}
+            {bugReportMode === "quick" && bugNotes.length > 0 && (
+              <p style={{ fontSize: 11, color: c.muted, margin: "14px 0 0", textAlign: "center" }}>
+                {bugNotes.length} note{bugNotes.length === 1 ? "" : "s"} saved · email from the Done screen
+              </p>
             )}
           </div>
         </div>

@@ -33,7 +33,13 @@ export async function scheduleRestPush(delaySec, exercise) {
   if (clientTimer) { clearTimeout(clientTimer); clientTimer = null; }
 
   const title = 'Bloom — rest done';
-  const body = `Next set, bitch! (${exercise})`;
+  // Use the user's rest message (configured in Settings → Rest timer) so the
+  // push body matches what's spoken aloud — one source of truth.
+  let phrase = 'Next set, bitch!';
+  try {
+    phrase = localStorage.getItem('bloom:restPhrase') || phrase;
+  } catch { /* localStorage unavailable in some contexts — fall back to default */ }
+  const body = `${phrase} (${exercise})`;
 
   // Only the SW fires the system notification (one source of truth = no duplicates).
   // The client-side playRestDone() handles audio/voice/vibration separately.
