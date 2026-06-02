@@ -1211,38 +1211,26 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
     };
   };
   const [exerciseGoals, setExerciseGoals] = useState(() => {
+    // Top banner shows the SUGGESTED WEIGHT only. Per-set rep targets are
+    // displayed under each set number row, so we don't duplicate them here.
     const map = {};
     workout.exercises.forEach((name) => {
       const s = perExerciseSuggestion(name);
-      const tReps = targets[name];
       if (!s) {
         map[name] = workout.deload
-          ? "Deload week — keep it light and smooth, leave plenty in the tank."
-          : "First time! Find a working weight you can hit for 8–10 reps.";
+          ? "Deload week — keep it light and smooth."
+          : "First time — pick a working weight.";
         return;
       }
       if (workout.deload) {
         const target = Math.round(s.lastWeight * 0.9 * 2) / 2;
-        map[name] = `Deload week — drop to ~${target}${unit}${tReps ? `, ${tReps} easy reps` : ''}. Fewer sets, focus on form.`;
+        map[name] = `Deload — drop to ~${target}${unit}.`;
         return;
       }
       if (s.allHit) {
-        // All sets hit the top of range → go up in weight.
-        const low = unit === "kg" ? 2 : 5;
-        const high = unit === "kg" ? 5 : 10;
-        map[name] = `You hit ${tReps} on every set at ${s.lastWeight}${unit} — go up ${low}-${high}${unit} today 🎯`;
-      } else if (tReps) {
-        // Show per-set "+1 rep" targets from last session.
-        const lastSets = (lastExForName(name) || [])
-          .filter(x => Number(x.weight) === s.lastWeight);
-        if (lastSets.length) {
-          const perSet = lastSets.map(x => Math.min(Number(x.reps) + 1, tReps));
-          map[name] = `Stay at ${s.lastWeight}${unit} — aim for ${perSet.join(", ")} reps (target: ${tReps} on all).`;
-        } else {
-          map[name] = `Stay at ${s.lastWeight}${unit} — aim for ${tReps} reps on every set.`;
-        }
+        map[name] = `Go up to ${s.nextWeight}${unit} 🎯`;
       } else {
-        map[name] = `Last: ${s.lastSets}×@${s.lastWeight}${unit} · aim for +1 rep per set`;
+        map[name] = `Stay at ${s.lastWeight}${unit}.`;
       }
     });
     return map;
@@ -1385,6 +1373,18 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
             ? Math.round(lastWeight * 0.9 * 2) / 2
             : (allHit ? bumpWeight(lastWeight, unit, isLowerName) : lastWeight))
         : "";
+      // Per-set rep target. If allHit (moving up in weight), aim for tReps on
+      // every set. Otherwise (staying at the working weight), aim for last
+      // session's reps + 1 on that set, capped at tReps. Per-set so a 10/8/7
+      // last session shows 11/9/8 targets, not the same number on every row.
+      const targetForSet = (i) => {
+        if (workout.deload) return tReps || lastEx?.[i]?.reps || "";
+        if (allHit) return tReps || "";
+        const last = Number(lastEx?.[i]?.reps);
+        if (!Number.isFinite(last) || last <= 0) return tReps || "";
+        const aim = last + 1;
+        return tReps ? Math.min(aim, tReps) : aim;
+      };
       return {
         name,
         rows: Array.from({ length: numSets }).map((_, i) => {
@@ -1393,7 +1393,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
             reps: "",
             weight: "",
             done: false,
-            targetReps: tReps || lastSet?.reps || "",
+            targetReps: targetForSet(i),
             targetWeight: nextWeight,
             prevReps: lastSet?.reps ?? null,
             prevWeight: lastSet?.weight ?? null,
@@ -1942,7 +1942,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
                           <div key={idx} style={{ display: "grid", gridTemplateColumns: "16px 1fr 1fr 1fr 28px", gap: 5, alignItems: "center", marginBottom: 4 }}>
                             <span style={{ fontSize: 11, fontWeight: 700, color: c.rosedeep }}>{String.fromCharCode(65 + idx)}</span>
                             <span style={{ fontSize: 10, color: c.muted }}>{row.prevReps != null && row.prevWeight != null ? `${row.prevReps}×${row.prevWeight}${unit}` : "—"}</span>
-                            <input value={row.reps} onChange={(e) => updateRow(realEi, ri, "reps", e.target.value)} placeholder={row.targetReps || "0"} style={inputStyle(row.done)} />
+                            <input value={row.reps} onChange={(e) => updateRow(realEi, ri, "reps", e.target.value)} placeholder="reps" style={inputStyle(row.done)} />
                             <input type="text" inputMode="decimal" value={row.weight} onChange={(e) => updateRow(realEi, ri, "weight", e.target.value)} placeholder={row.targetWeight || unit} style={inputStyle(row.done)} />
                             <button onClick={() => toggleDone(realEi, ri)} style={{ background: row.done ? c.rosedeep : c.white, border: `1px solid ${row.done ? c.rosedeep : c.line}`, borderRadius: 6, width: 28, height: 28, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                               {row.done && <Check size={14} color="white" />}
@@ -2034,17 +2034,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
               <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 1fr 1fr 36px", gap: 8, fontSize: 10, color: c.muted, marginBottom: 6, letterSpacing: 0.5 }}>
                 <span>SET</span>
                 <span>PREVIOUS</span>
-                <span>
-                  REPS
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const v = prompt("Target reps:", targets[ex.name] || 10);
-                      if (v !== null && isFinite(parseInt(v))) updateTarget(ex.name, parseInt(v));
-                    }}
-                    style={{ display: "block", fontSize: 9, color: c.rosedeep, fontWeight: 600, letterSpacing: 0.3, textTransform: "none", marginTop: 1, cursor: "pointer", textDecoration: "underline dotted" }}
-                  >target: {targets[ex.name] || 10}</span>
-                </span>
+                <span>REPS</span>
                 <span>WEIGHT</span>
                 <span></span>
               </div>
@@ -2058,7 +2048,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
                   <span style={{ fontSize: 11, color: c.muted }}>
                     {row.prevReps != null && row.prevWeight != null ? `${row.prevReps}×${row.prevWeight}${unit}` : "—"}
                   </span>
-                  <input value={row.reps} onChange={(e) => updateRow(ei, ri, "reps", e.target.value)} placeholder={row.targetReps || "0"} style={inputStyle(row.done)} />
+                  <input value={row.reps} onChange={(e) => updateRow(ei, ri, "reps", e.target.value)} placeholder="reps" style={inputStyle(row.done)} />
                   <input type="text" inputMode="decimal" value={row.weight} onChange={(e) => updateRow(ei, ri, "weight", e.target.value)} placeholder={row.targetWeight || unit} style={inputStyle(row.done)} />
                   <button onClick={() => toggleDone(ei, ri)} style={{ background: row.done ? c.rosedeep : c.white, border: `1px solid ${row.done ? c.rosedeep : c.line}`, borderRadius: 8, width: 32, height: 32, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     {row.done && <Check size={16} color="white" />}
