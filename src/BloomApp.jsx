@@ -1868,20 +1868,38 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
         </div>
       </div>
 
-      {/* deload note + coach button */}
-      <div style={{ padding: "16px 24px 0", display: "flex", gap: 10 }}>
+      {/* deload note + Ask Wren button */}
+      <div style={{ padding: "16px 24px 0" }}>
         {workout.deload && (
-          <div style={{ flex: 1, background: `linear-gradient(135deg, ${c.blush}, ${c.blushLight})`, borderRadius: 14, padding: "12px 14px" }}>
+          <div style={{ background: `linear-gradient(135deg, ${c.blush}, ${c.blushLight})`, borderRadius: 14, padding: "12px 14px", marginBottom: 10 }}>
             <p style={{ fontSize: 10, color: c.rosedeep, fontWeight: 700, margin: 0, letterSpacing: 0.5 }}>🌙 DELOAD WEEK</p>
             <p style={{ fontSize: 13, color: c.charcoal, margin: "4px 0 0", lineHeight: 1.4 }}>
               Lighter loads and fewer sets — recover and let your body adapt.
             </p>
           </div>
         )}
-        {!workout.deload && <div style={{ flex: 1 }} />}
-        <button onClick={() => setShowCoach(true)} style={{ background: c.charcoal, border: "none", borderRadius: 14, width: 56, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "white", gap: 2 }}>
-          <Sparkles size={18} />
-          <span style={{ fontSize: 9, fontWeight: 600 }}>Coach</span>
+        <button
+          onClick={() => setShowCoach(true)}
+          style={{
+            width: "100%",
+            padding: "14px 18px",
+            borderRadius: 18,
+            border: "none",
+            cursor: "pointer",
+            background: "linear-gradient(135deg, #C8B4E8 0%, #F4B8D4 50%, #FFD3B8 100%)",
+            color: "white",
+            fontSize: 14,
+            fontWeight: 700,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            boxShadow: "0 6px 16px rgba(200,180,232,0.35)",
+            textShadow: "0 1px 4px rgba(0,0,0,0.15)",
+            fontFamily: "inherit",
+          }}
+        >
+          <Sparkles size={16} /> Ask Wren
         </button>
       </div>
 
