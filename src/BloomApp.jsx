@@ -89,6 +89,7 @@ import {
   Link2Off,
 } from "lucide-react";
 import { useLocalState, recordSession, getSessions, getLastSession, updateSession, deleteSession, load, save, getActiveProgram, getMissedSessions, ensureSessionAOrder, ensureSessionBPulldown, ensureSessionCLegCurl } from "./lib/storage";
+import { deleteSessionRemote } from "./lib/sync";
 import { supabase, isSupabaseConfigured } from "./lib/supabase";
 import { subscribeToPush, scheduleRestPush, cancelRestPush } from "./lib/push";
 import WrenView from "./components/wren/WrenView";
@@ -2243,11 +2244,19 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
             🐞 Report bugs{bugNotes.length > 0 ? ` · ${bugNotes.length}` : ""}
           </button>
           {/* Escape hatch — if Finish was tapped by accident, delete the just-
-              recorded session and return to the workout with sets intact. */}
+              recorded session (locally AND remotely, so sync doesn't bring it
+              back) and return to the workout with sets intact. */}
           <button
             onClick={() => {
               if (!confirm("Resume the workout? This deletes the just-recorded session from your history; your sets remain in the workout so you can keep going.")) return;
-              if (finishSummary?.finishedAt) deleteSession(finishSummary.finishedAt);
+              if (finishSummary?.finishedAt) {
+                // Look up the local record so we can grab its remote id (if it
+                // was already synced) before deleting it locally.
+                const list = load("sessions", []);
+                const target = list.find((s) => s.finishedAt === finishSummary.finishedAt);
+                deleteSession(finishSummary.finishedAt);
+                if (target?.id) deleteSessionRemote(target.id).catch(() => {});
+              }
               setFinishSummary(null);
             }}
             style={{ width: "100%", background: "none", color: c.muted, border: "none", padding: "10px 0 4px", fontSize: 13, fontWeight: 500, cursor: "pointer", textDecoration: "underline", fontFamily: "inherit" }}
@@ -2277,9 +2286,10 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
         </div>
       )}
 
-      {/* bug report modal */}
+      {/* bug report modal — must be above the finish summary (zIndex 250) so it
+          shows on top when opened from the Done page */}
       {showBugReport && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 200 }} onClick={() => setShowBugReport(false)}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 350 }} onClick={() => setShowBugReport(false)}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: c.cream, width: "100%", maxWidth: 430, borderRadius: "28px 28px 0 0", padding: 24, maxHeight: "85vh", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
               <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>App bugs</h2>
@@ -2564,7 +2574,12 @@ function WeekOverview({ onClose, onSessionsChange }) {
             session={editing}
             onClose={() => setEditing(null)}
             onSave={(patch) => { updateSession(editing.finishedAt, patch); setEditing(null); refresh(); }}
-            onDelete={() => { deleteSession(editing.finishedAt); setEditing(null); refresh(); }}
+            onDelete={() => {
+              if (editing.id) deleteSessionRemote(editing.id).catch(() => {});
+              deleteSession(editing.finishedAt);
+              setEditing(null);
+              refresh();
+            }}
           />
         )}
 
@@ -4164,7 +4179,12 @@ function ProgressView({ onSessionsChange, onExerciseTap }) {
           session={editing}
           onClose={() => setEditing(null)}
           onSave={(patch) => { updateSession(editing.finishedAt, patch); setEditing(null); refresh(); }}
-          onDelete={() => { deleteSession(editing.finishedAt); setEditing(null); refresh(); }}
+          onDelete={() => {
+            if (editing.id) deleteSessionRemote(editing.id).catch(() => {});
+            deleteSession(editing.finishedAt);
+            setEditing(null);
+            refresh();
+          }}
         />
       )}
     </div>
