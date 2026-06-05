@@ -2030,7 +2030,21 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
               <div style={{ background: c.blushLight, borderRadius: 12, padding: "10px 12px", marginBottom: 10, display: "flex", gap: 8, alignItems: "flex-start" }}>
                 <Sparkles size={14} color={c.rosedeep} style={{ flexShrink: 0, marginTop: 2 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 11, color: c.charcoal, margin: 0, lineHeight: 1.5 }}>{exerciseGoals[ex.name]}</p>
+                  <p style={{ fontSize: 11, color: c.charcoal, margin: 0, lineHeight: 1.5 }}>{(() => {
+                    // Live override: if every set is done and every one hit
+                    // the top of the rep range, tell her to go up next time.
+                    const tReps = targets[ex.name];
+                    const done = ex.rows.filter((r) => r.done && Number(r.reps) > 0);
+                    if (tReps && done.length === ex.rows.length && done.length > 0 && done.every((r) => Number(r.reps) >= tReps)) {
+                      const w = Math.max(...done.map((r) => Number(r.weight) || 0));
+                      const isLowerName = /barbell|squat|deadlift|hip thrust|leg press|rdl/i.test(ex.name);
+                      const nextW = w > 0 ? bumpWeight(w, unit, isLowerName) : null;
+                      return nextW
+                        ? `🎯 You hit ${tReps} on every set — go up to ${nextW}${unit} next time.`
+                        : `🎯 You hit ${tReps} on every set — go up next time.`;
+                    }
+                    return exerciseGoals[ex.name];
+                  })()}</p>
                   <button
                     onClick={() => askWrenForBump(ex.name)}
                     disabled={!!bumpLoading[ex.name]}
@@ -2063,7 +2077,17 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
               <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 1fr 1fr 36px", gap: 8, fontSize: 10, color: c.muted, marginBottom: 6, letterSpacing: 0.5 }}>
                 <span>SET</span>
                 <span>PREVIOUS</span>
-                <span>REPS</span>
+                <span>
+                  REPS
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const v = prompt("Top of rep range:", targets[ex.name] || 10);
+                      if (v !== null && isFinite(parseInt(v))) updateTarget(ex.name, parseInt(v));
+                    }}
+                    style={{ display: "block", fontSize: 9, color: c.rosedeep, fontWeight: 600, letterSpacing: 0.3, textTransform: "none", marginTop: 1, cursor: "pointer", textDecoration: "underline dotted" }}
+                  >target: {targets[ex.name] || 10}</span>
+                </span>
                 <span>WEIGHT</span>
                 <span></span>
               </div>
