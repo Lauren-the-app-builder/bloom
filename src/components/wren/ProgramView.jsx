@@ -23,11 +23,48 @@ const STATUS_STYLES = {
   deload: { background: '#ede4f7', color: '#7040A0', label: 'Deload' },
 };
 
+// Phase labels for each mesocycle, used by the Journey card.
+const PHASE_FOR_WEEK = (wk) => {
+  if (wk <= 4) return 'Foundation';
+  if (wk <= 8) return 'Build';
+  return 'Peak';
+};
+
+// Single stat tile inside the Journey card. Hoisted out of the parent so it
+// keeps a stable component identity across renders.
+function JourneyStat({ value, label, accent }) {
+  return (
+    <div style={{
+      flex: 1, minWidth: 0,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+      padding: '6px 4px',
+    }}>
+      <div style={{
+        fontSize: 17, fontWeight: 800, color: 'white', letterSpacing: -0.3,
+        textShadow: '0 1px 6px rgba(80,40,90,0.45)',
+        display: 'flex', alignItems: 'baseline', gap: 1,
+      }}>
+        {value}
+        {accent && (
+          <span style={{ fontSize: 11, fontWeight: 700, opacity: 0.85, marginLeft: 1 }}>{accent}</span>
+        )}
+      </div>
+      <div style={{
+        fontSize: 9.5, fontWeight: 600, color: 'rgba(255,255,255,0.92)',
+        textShadow: '0 1px 4px rgba(80,40,90,0.4)',
+        letterSpacing: 0.2, textAlign: 'center', lineHeight: 1.2,
+      }}>
+        {label}
+      </div>
+    </div>
+  );
+}
+
 export default function ProgramView() {
   const rawProgram = getActiveProgram();
   // The program data lives inside program_json (from Supabase schema).
   const program = rawProgram?.program_json || rawProgram || null;
-  const { week: currentWeek, startDate } = getCurrentWeekAndMesocycle(program);
+  const { week: currentWeek, startDate, hasStarted } = getCurrentWeekAndMesocycle(program);
   const [expandedWeek, setExpandedWeek] = useState(null);
   const [collapsedMeso, setCollapsedMeso] = useState({});
 
@@ -95,12 +132,54 @@ export default function ProgramView() {
     setCollapsedMeso(prev => ({ ...prev, [idx]: !prev[idx] }));
   }
 
+  // ----- Journey stats -----
+  const totalWeeks = program.weeks.length || 12;
+  // Sessions this program week vs. total scheduled for this week.
+  const weekIdx = Math.min(Math.max(0, currentWeek - 1), program.weeks.length - 1);
+  const currentWeekData = program.weeks[weekIdx];
+  const scheduledThisWeek = currentWeekData?.sessions?.length || 0;
+  const sessionsThisWeek = (() => {
+    if (!startDate || !hasStarted) return 0;
+    const weekStart = startDate.getTime() + (currentWeek - 1) * 7 * 86400000;
+    return sessionsLog.filter(s => Number(s.finishedAt) >= weekStart).length;
+  })();
+  // Day streak: unique calendar days with a logged session since program start.
+  const dayStreak = (() => {
+    if (!startDate || !hasStarted) return 0;
+    const startMs = startDate.getTime();
+    const days = new Set();
+    for (const s of sessionsLog) {
+      const t = Number(s.finishedAt);
+      if (!Number.isFinite(t) || t < startMs) continue;
+      const d = new Date(t);
+      days.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+    }
+    return days.size;
+  })();
+  // Progress %: clamp to [0, 100], based on currentWeek / total.
+  const progressPct = hasStarted
+    ? Math.max(0, Math.min(100, Math.round((currentWeek / totalWeeks) * 100)))
+    : 0;
+  // Estimated finish: startDate + totalWeeks * 7 days.
+  const finishDate = (() => {
+    if (!startDate) return null;
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + totalWeeks * 7);
+    return d;
+  })();
+  const finishLabel = finishDate
+    ? finishDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : '—';
+  const phaseLabel = PHASE_FOR_WEEK(currentWeek);
+
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
       {mesocycles.map((weeks, mi) => {
         if (!weeks.length) return null;
         const isCollapsed = collapsedMeso[mi];
         const label = MESO_LABELS[mi];
+        // Flower accent marks the mesocycle currently in progress.
+        const isCurrentMeso = currentWeek > 0 && Math.floor((currentWeek - 1) / 4) === mi;
 
         return (
           <div key={mi} style={{ marginBottom: 16 }}>
@@ -124,6 +203,19 @@ export default function ProgramView() {
               <span style={{ fontSize: 12, color: c.muted }}>
                 — {label.subtitle}
               </span>
+              {isCurrentMeso && (
+                <img
+                  src="/flower.png"
+                  alt=""
+                  aria-hidden="true"
+                  style={{
+                    height: 38, width: 'auto', marginLeft: 'auto', marginRight: -4,
+                    marginTop: -10, marginBottom: -10,
+                    filter: 'drop-shadow(0 2px 4px rgba(201,122,174,0.18))',
+                    pointerEvents: 'none',
+                  }}
+                />
+              )}
             </button>
 
             {/* Weeks */}
@@ -229,6 +321,67 @@ export default function ProgramView() {
           </div>
         );
       })}
+
+      {/* Your Journey — sunset card with computed program stats. */}
+      {hasStarted && (
+        <div style={{
+          marginTop: 8, marginBottom: 4,
+          borderRadius: 22, overflow: 'hidden',
+          position: 'relative',
+          backgroundImage: 'url(/sunset.png)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          boxShadow: '0 12px 28px rgba(180,140,200,0.22)',
+        }}>
+          {/* Soft scrim so text reads against the bright sky. */}
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: 'linear-gradient(180deg, rgba(80,50,90,0.05) 0%, rgba(80,50,90,0.28) 100%)',
+            pointerEvents: 'none',
+          }} />
+          <div style={{ position: 'relative', padding: '18px 18px 16px' }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4,
+            }}>
+              <Sparkles size={11} color="white" style={{ filter: 'drop-shadow(0 1px 3px rgba(80,40,90,0.4))' }} />
+              <span style={{
+                fontSize: 9.5, fontWeight: 800, letterSpacing: 1.4,
+                color: 'white', textTransform: 'uppercase',
+                textShadow: '0 1px 4px rgba(80,40,90,0.4)',
+              }}>
+                Your Journey
+              </span>
+            </div>
+            <div style={{
+              fontSize: 22, fontWeight: 800, color: 'white', letterSpacing: -0.4,
+              textShadow: '0 2px 8px rgba(80,40,90,0.4)',
+            }}>
+              Week {currentWeek} of {totalWeeks}
+            </div>
+            <div style={{
+              fontSize: 12, color: 'rgba(255,255,255,0.92)', marginTop: 2, fontWeight: 500,
+              textShadow: '0 1px 6px rgba(80,40,90,0.4)',
+            }}>
+              {phaseLabel} phase · {progressPct}% complete
+            </div>
+
+            <div style={{
+              display: 'flex', alignItems: 'stretch', gap: 4,
+              marginTop: 14, paddingTop: 12,
+              borderTop: '1px solid rgba(255,255,255,0.25)',
+            }}>
+              <JourneyStat
+                value={sessionsThisWeek}
+                accent={scheduledThisWeek ? `/${scheduledThisWeek}` : null}
+                label="Sessions"
+              />
+              <JourneyStat value={dayStreak} label="Day streak" />
+              <JourneyStat value={progressPct} accent="%" label="Progress" />
+              <JourneyStat value={finishLabel} label="Est. finish" />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

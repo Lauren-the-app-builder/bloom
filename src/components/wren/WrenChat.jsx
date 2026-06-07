@@ -200,9 +200,23 @@ DO NOT generate the program yet. Just introduce yourself and ask if she has anyt
   }
 
   const visibleMessages = messages.filter(m => !m.isSystem);
+  const showWelcome = visibleMessages.length === 0 && !loading;
+
+  const quickPrompts = [
+    'How was my last workout?',
+    'What should I focus on this week?',
+    'Help me adjust to how I feel',
+  ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+    <div style={{
+      display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0,
+      position: 'relative',
+      // Sky background — sits behind everything in the chat.
+      backgroundImage: 'url(/Wren.png)',
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+    }}>
       {/* Scrollable message area */}
       <div
         ref={scrollRef}
@@ -211,10 +225,60 @@ DO NOT generate the program yet. Just introduce yourself and ask if she has anyt
           padding: '12px 12px 8px',
           WebkitOverflowScrolling: 'touch',
           display: 'flex', flexDirection: 'column',
+          position: 'relative', zIndex: 1,
         }}
       >
+        {/* Welcome state — shown when there are no messages yet */}
+        {showWelcome && (
+          <div style={{
+            flex: 1, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            padding: '24px 16px', gap: 18,
+          }}>
+            <Sparkles size={28} style={{ color: c.rosedeep, filter: 'drop-shadow(0 2px 8px rgba(201,122,174,0.4))' }} />
+            <div style={{ textAlign: 'center' }}>
+              <div style={{
+                fontSize: 26, fontWeight: 700, color: c.charcoal, letterSpacing: -0.3,
+                textShadow: '0 1px 8px rgba(255,255,255,0.6)',
+              }}>
+                Hi Lauren,
+              </div>
+              <div style={{
+                fontSize: 18, fontWeight: 500, color: c.charcoal, marginTop: 4, lineHeight: 1.35,
+                textShadow: '0 1px 8px rgba(255,255,255,0.6)',
+              }}>
+                How can I help<br />you today?
+              </div>
+            </div>
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: 8,
+              width: '100%', maxWidth: 320, marginTop: 4,
+            }}>
+              {quickPrompts.map(p => (
+                <button
+                  key={p}
+                  onClick={() => sendMessage(p)}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    gap: 8, padding: '12px 18px',
+                    borderRadius: 999, border: '1px solid rgba(255,255,255,0.7)',
+                    background: 'rgba(255,255,255,0.65)',
+                    backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
+                    fontSize: 13, fontWeight: 500, color: c.charcoal, fontFamily: 'inherit',
+                    cursor: 'pointer', textAlign: 'left',
+                    boxShadow: '0 2px 12px rgba(120,80,140,0.08)',
+                  }}
+                >
+                  <span>{p}</span>
+                  <ChevronRight size={14} color={c.rosedeep} />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Spacer pushes messages to bottom when there are few */}
-        <div style={{ flex: 1 }} />
+        {!showWelcome && <div style={{ flex: 1 }} />}
 
         {visibleMessages.map((msg, i) => {
           const isUser = msg.role === 'user';
@@ -249,11 +313,16 @@ DO NOT generate the program yet. Just introduce yourself and ask if she has anyt
                   ? {
                       background: c.charcoal, color: 'white',
                       borderBottomRightRadius: 6,
+                      boxShadow: '0 2px 10px rgba(80,50,90,0.18)',
                     }
                   : {
-                      background: 'white', color: c.charcoal,
+                      // Translucent white so the sky tints through gently.
+                      background: 'rgba(255,255,255,0.85)',
+                      backdropFilter: 'blur(14px)',
+                      WebkitBackdropFilter: 'blur(14px)',
+                      color: c.charcoal,
                       borderBottomLeftRadius: isFirst ? 6 : 20,
-                      boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                      boxShadow: '0 2px 12px rgba(120,80,140,0.10)',
                     }
                 ),
               }}>
@@ -296,7 +365,9 @@ DO NOT generate the program yet. Just introduce yourself and ask if she has anyt
             </div>
             <div style={{
               padding: '10px 14px', borderRadius: 20, borderBottomLeftRadius: 6,
-              background: 'white', boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+              background: 'rgba(255,255,255,0.85)',
+              backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
+              boxShadow: '0 2px 12px rgba(120,80,140,0.10)',
               display: 'flex', gap: 5, alignItems: 'center',
             }}>
               {[0, 1, 2].map(j => (
@@ -319,11 +390,12 @@ DO NOT generate the program yet. Just introduce yourself and ask if she has anyt
         style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '8px 12px 14px',
-          background: 'rgba(255,255,255,0.95)',
+          background: 'rgba(255,255,255,0.6)',
           backdropFilter: 'blur(20px)',
           WebkitBackdropFilter: 'blur(20px)',
-          borderTop: '1px solid rgba(240,232,238,0.5)',
+          borderTop: '1px solid rgba(255,255,255,0.5)',
           flexShrink: 0,
+          position: 'relative', zIndex: 1,
         }}
       >
         <input
@@ -334,9 +406,9 @@ DO NOT generate the program yet. Just introduce yourself and ask if she has anyt
           disabled={loading}
           style={{
             flex: 1, padding: '11px 16px', borderRadius: 999,
-            border: '1px solid rgba(240,232,238,0.8)',
+            border: '1px solid rgba(255,255,255,0.7)',
             fontSize: 14, fontFamily: 'inherit', color: c.charcoal, outline: 'none',
-            background: 'white',
+            background: 'rgba(255,255,255,0.85)',
           }}
         />
         <button

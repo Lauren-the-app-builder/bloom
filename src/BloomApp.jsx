@@ -470,29 +470,15 @@ export default function BloomApp() {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
 
         {/* Two views: Today + Wren, toggled by bottom nav */}
-        {tab === "home" && (<>
-          {/* Today header with history + settings */}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: "14px 16px 0", flexShrink: 0 }}>
-            <button
-              onClick={() => setShowWeek(true)}
-              title="Workout history"
-              style={{ width: 32, height: 32, borderRadius: "50%", background: "white", border: `1px solid ${c.line}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
-            >
-              <History size={13} color={c.muted} />
-            </button>
-            <button
-              onClick={() => setShowSettings(true)}
-              style={{ width: 32, height: 32, borderRadius: "50%", background: "white", border: `1px solid ${c.line}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
-            >
-              <Settings size={13} color={c.muted} />
-            </button>
-          </div>
+        {tab === "home" && (
           <TodayView
             onStartWorkout={(w) => { setInProgress(w); }}
             sessionsBump={sessionsBump}
             onAskWren={() => setTab("coach")}
+            onOpenHistory={() => setShowWeek(true)}
+            onOpenSettings={() => setShowSettings(true)}
           />
-        </>)}
+        )}
         {tab === "coach" && (
           <WrenView
             schedule={schedule}

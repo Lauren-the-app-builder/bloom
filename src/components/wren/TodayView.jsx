@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Leaf, Check, Sparkles, Heart, CalendarDays } from 'lucide-react';
+import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings } from 'lucide-react';
 import { c } from './tokens';
 import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed } from '../../lib/storage';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
@@ -12,7 +12,7 @@ const SESSION_COLORS = {
   C: { gradient: 'linear-gradient(160deg, #FFD3B8 0%, #F4B8D4 50%, #C8B4E8 100%)', shadow: 'rgba(244,184,212,0.35)' },
 };
 
-export default function TodayView({ onStartWorkout, sessionsBump, onAskWren }) {
+export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onOpenHistory, onOpenSettings }) {
   // Bumped after a manual schedule change to force a re-read of the program.
   const [scheduleBump, setScheduleBump] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -129,24 +129,84 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren }) {
 
   return (
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+    {/* Sunset hero banner — title + date overlaid; history/settings float on top */}
     <div style={{
-      padding: '16px 16px calc(40px + env(safe-area-inset-bottom)) 16px',
-      display: 'flex', flexDirection: 'column', gap: 14,
+      position: 'relative',
+      height: 200,
+      backgroundImage: 'url(/sunset.png)',
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      // Soft dark scrim at the bottom so white text reads against bright sunlight.
+      boxShadow: 'inset 0 -40px 40px -20px rgba(80,50,90,0.18)',
     }}>
-      {/* Header */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-          <h1 style={{ fontSize: 28, margin: 0, fontWeight: 800, letterSpacing: -0.8, background: `linear-gradient(90deg, ${c.rosedeep}, ${c.rose})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+      {/* Top-right action buttons */}
+      <div style={{
+        position: 'absolute', top: 14, right: 16,
+        display: 'flex', gap: 8, zIndex: 2,
+      }}>
+        {onOpenHistory && (
+          <button
+            onClick={onOpenHistory}
+            title="Workout history"
+            style={{
+              width: 32, height: 32, borderRadius: '50%',
+              background: 'rgba(255,255,255,0.92)',
+              border: '1px solid rgba(255,255,255,0.6)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
+              boxShadow: '0 2px 8px rgba(120,80,140,0.15)',
+            }}
+          >
+            <History size={13} color={c.charcoal} />
+          </button>
+        )}
+        {onOpenSettings && (
+          <button
+            onClick={onOpenSettings}
+            style={{
+              width: 32, height: 32, borderRadius: '50%',
+              background: 'rgba(255,255,255,0.92)',
+              border: '1px solid rgba(255,255,255,0.6)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
+              boxShadow: '0 2px 8px rgba(120,80,140,0.15)',
+            }}
+          >
+            <Settings size={13} color={c.charcoal} />
+          </button>
+        )}
+      </div>
+      {/* Title + date */}
+      <div style={{
+        position: 'absolute', left: 22, bottom: 22, zIndex: 2,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <h1 style={{
+            fontSize: 34, margin: 0, fontWeight: 800, letterSpacing: -0.8,
+            color: 'white',
+            textShadow: '0 2px 12px rgba(80,40,90,0.35)',
+          }}>
             Bloom
           </h1>
-          <Heart size={10} style={{ color: c.rosedeep }} fill={c.rosedeep} />
+          <Heart size={14} style={{ color: 'white', filter: 'drop-shadow(0 1px 3px rgba(80,40,90,0.4))' }} fill="white" />
         </div>
-        <div style={{ fontSize: 12, color: c.muted, marginTop: 2 }}>
+        <div style={{
+          fontSize: 13, color: 'rgba(255,255,255,0.92)', marginTop: 4,
+          textShadow: '0 1px 6px rgba(80,40,90,0.4)', fontWeight: 500,
+        }}>
           {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           {program ? ` · Week ${currentWeek}` : ''}
           {isDeload ? ' · Deload' : ''}
         </div>
       </div>
+    </div>
+
+    <div style={{
+      padding: '16px 16px calc(40px + env(safe-area-inset-bottom)) 16px',
+      display: 'flex', flexDirection: 'column', gap: 14,
+    }}>
 
       {/* This week's schedule — always visible, editable, marks done sessions */}
       {hasStarted && allSessions.length > 0 && (() => {
