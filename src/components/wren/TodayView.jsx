@@ -268,8 +268,14 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
             background: 'rgba(255,255,255,0.86)',
             backdropFilter: 'blur(16px)',
             WebkitBackdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255,255,255,0.7)',
+            // Sunset keeps the original soft white outline; Lauren drops it
+            // so the pink gradient banner blends straight into the card edge.
+            border: background === 'lauren' ? 'none' : '1px solid rgba(255,255,255,0.7)',
             boxShadow: '0 12px 32px rgba(180,140,200,0.18)',
+            // Clip the gradient banner cleanly to the rounded top corners
+            // (only needed in Lauren mode where the banner spans card edge
+            // to card edge via negative margins).
+            overflow: background === 'lauren' ? 'hidden' : 'visible',
           }}>
             {/* Lauren mode: Bloom + date headline banner inside the top
                 of the card — pink→purple gradient, white text, no
