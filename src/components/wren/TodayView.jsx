@@ -131,26 +131,32 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onO
     <div style={{
       flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch',
       position: 'relative',
+      // Page background — soft sunset-toned vertical gradient that sits
+      // BEHIND the hero and continues down the page, so the hero's bottom
+      // can dissolve into it with no hard edge.
+      background: 'linear-gradient(180deg, #F4DDE8 0%, #F0D8E2 18%, #F6E2DC 42%, #FBEFEC 65%, #FDF5F1 100%)',
     }}>
-      {/* Sunset hero — shows the full scene (sun, water, mountains,
-          flowers) at full width without cropping. Large rounded top
-          corners match the device frame, and a soft bottom mask dissolves
-          the image into the page. */}
+      {/* Sunset hero — full scene, full width, no crop. Large rounded top
+          corners. A long bottom mask dissolves the image into the page
+          gradient so there's no visible edge. */}
       <div
         aria-hidden="true"
         style={{
-          position: 'absolute', top: 0, left: 0, right: 0, height: 420,
+          position: 'absolute', top: 0, left: 0, right: 0, height: 540,
           backgroundImage: 'url(/sunset.png)',
-          // 100% auto = full width, natural aspect — no zoom/crop, so the
-          // whole landscape shows like the design.
           backgroundSize: '100% auto',
           backgroundRepeat: 'no-repeat',
-          backgroundPosition: 'center top',
+          backgroundPosition: 'top center',
           borderTopLeftRadius: 32,
           borderTopRightRadius: 32,
-          // Soft fade into the page background.
-          maskImage: 'linear-gradient(to bottom, black 55%, transparent)',
-          WebkitMaskImage: 'linear-gradient(to bottom, black 55%, transparent)',
+          // Softer pastel tones — desaturate a touch and lift brightness so
+          // it reads as a faded watercolor rather than a vivid photo.
+          filter: 'saturate(0.78) brightness(1.04)',
+          // Long fade — opaque for the top 35%, gradually transparent the
+          // rest of the way, so the bottom edge of the hero blends into
+          // the sunset-toned page gradient with no hard transition.
+          maskImage: 'linear-gradient(#000 0%, #000 35%, transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(#000 0%, #000 35%, transparent 100%)',
           pointerEvents: 'none',
           zIndex: 0,
         }}
@@ -460,18 +466,6 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onO
             boxShadow: `0 16px 36px ${colors.shadow}`,
             color: 'white', position: 'relative',
           }}>
-            {/* Flower decoration — sits on top-right of the gradient card. */}
-            <img
-              src="/flower.png"
-              alt=""
-              aria-hidden="true"
-              style={{
-                position: 'absolute', top: 14, right: 14,
-                height: 78, width: 'auto',
-                pointerEvents: 'none',
-                filter: 'drop-shadow(0 2px 6px rgba(120,80,140,0.2))',
-              }}
-            />
             <div style={{ padding: '22px 22px 14px', position: 'relative' }}>
               <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.4, opacity: 0.9, textTransform: 'uppercase', textShadow: '0 1px 4px rgba(0,0,0,0.15)' }}>
                 Session {pick.session.session_label} · {headLabel}{isDeload ? ' · 🌙 Deload' : ''}
