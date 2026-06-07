@@ -296,11 +296,10 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
                   </span>
                 </div>
                 <div style={{
-                  // Soft pink-rose hairline that fades into the card
-                  // edges — softer than a flat border, no visible ends.
+                  // Solid pink-rose line from edge to edge.
                   height: 1,
-                  background: `linear-gradient(90deg, transparent 0%, ${c.blush} 30%, ${c.rosedeep} 50%, ${c.blush} 70%, transparent 100%)`,
-                  opacity: 0.55,
+                  background: `linear-gradient(90deg, ${c.blush} 0%, ${c.rosedeep} 50%, ${c.blush} 100%)`,
+                  opacity: 0.6,
                   marginBottom: 14,
                 }} />
               </>
