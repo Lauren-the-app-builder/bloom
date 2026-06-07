@@ -131,38 +131,36 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onO
     <div style={{
       flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch',
       position: 'relative',
-      // Page background — purple-rose gradient that holds a uniform soft
-      // tone in the band below the New Week card (where the 6 exercises
-      // card lands), so the hero can dissolve into it seamlessly.
-      background: 'linear-gradient(180deg, #DCBED6 0%, #C8AAC5 22%, #BDA0C0 40%, #C5A9C5 55%, #D2B8CE 68%, #DCC5D5 78%, #E5D0DA 90%, #EFDCDC 100%)',
+      // Page background — purple-pink vertical gradient that picks up where
+      // the sunset's flowers fade and continues down the page. Designed so
+      // the bottom edge of the hero blends into it with no visible seam.
+      background: 'linear-gradient(180deg, #E5C8D9 0%, #DCB8CE 22%, #D0A8C5 42%, #C9A4C5 58%, #D8B7CF 75%, #ECCFD8 90%, #F8E8E2 100%)',
     }}>
-      {/* Sunset hero — scaled up 70% so the flowers extend well past the
-          New Week card on the sides, just like the reference. The mask
-          fades over a wide band and reaches full transparency a comfortable
-          buffer before the image's natural bottom edge, so there's no
-          visible seam where it ends. */}
+      {/* Sunset hero — scaled up so the image fills more vertical space
+          and extends well past the New Week card on the sides. The mask
+          reaches full transparency right at the image's bottom edge, so
+          the image dissolves into the purple page gradient without a
+          hard seam. */}
       <div
         aria-hidden="true"
         style={{
           position: 'absolute', top: 0, left: 0, right: 0, height: 720,
           backgroundImage: 'url(/sunset.png)',
-          // 170% scale puts the image's natural bottom edge at ~y=545,
-          // so the flowers reach down past the card on the sides.
-          backgroundSize: '170% auto',
+          backgroundSize: '140% auto',
           backgroundRepeat: 'no-repeat',
           backgroundPosition: 'top center',
           borderTopLeftRadius: 32,
           borderTopRightRadius: 32,
-          // Soft pastel feel, but slightly more saturated than before so
-          // the purples read warmer.
-          filter: 'saturate(0.85) brightness(1.03)',
-          // Image opaque through the area above + across the card top
-          // (~y=267), then fades smoothly over a 250px band to full
-          // transparency at y=525 — about 20px before the image content
-          // naturally ends. That buffer ensures no rectangular edge can
-          // ever be visible.
-          maskImage: 'linear-gradient(#000 0%, #000 37%, transparent 73%)',
-          WebkitMaskImage: 'linear-gradient(#000 0%, #000 37%, transparent 73%)',
+          // Softer pastel feel.
+          filter: 'saturate(0.78) brightness(1.05)',
+          // Long gradual fade. Opaque only through the area above the
+          // card (~y=259), then fades over a wide ~170px band, reaching
+          // fully transparent at y=432 — well BEFORE the image content
+          // ends at y=449. That 17px buffer hides the image's natural
+          // bottom edge, so there's no harsh line where it would
+          // otherwise abruptly stop.
+          maskImage: 'linear-gradient(#000 0%, #000 36%, transparent 60%)',
+          WebkitMaskImage: 'linear-gradient(#000 0%, #000 36%, transparent 60%)',
           pointerEvents: 'none',
           zIndex: 0,
         }}
