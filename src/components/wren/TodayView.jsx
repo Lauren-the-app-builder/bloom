@@ -128,85 +128,91 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onO
   })();
 
   return (
-    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
-    {/* Sunset hero banner — title + date overlaid; history/settings float on top */}
     <div style={{
+      flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch',
       position: 'relative',
-      height: 200,
-      backgroundImage: 'url(/sunset.png)',
-      backgroundSize: 'cover',
-      backgroundPosition: 'center',
-      // Soft dark scrim at the bottom so white text reads against bright sunlight.
-      boxShadow: 'inset 0 -40px 40px -20px rgba(80,50,90,0.18)',
     }}>
-      {/* Top-right action buttons */}
+      {/* Sunset hero — tall background that stretches behind the top cards
+          and softly fades into the page. Sits below all content. */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute', top: 0, left: 0, right: 0, height: 640,
+          backgroundImage: 'url(/sunset.png)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center top',
+          // Mask fades the image out toward the bottom so it blends into cream.
+          maskImage: 'linear-gradient(to bottom, black 0%, black 55%, transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 55%, transparent 100%)',
+          pointerEvents: 'none',
+          zIndex: 0,
+        }}
+      />
+
+      {/* Floating top-right action buttons — sit on the hero */}
       <div style={{
-        position: 'absolute', top: 14, right: 16,
-        display: 'flex', gap: 8, zIndex: 2,
+        position: 'absolute', top: 16, right: 16,
+        display: 'flex', gap: 8, zIndex: 3,
       }}>
         {onOpenHistory && (
           <button
             onClick={onOpenHistory}
             title="Workout history"
             style={{
-              width: 32, height: 32, borderRadius: '50%',
-              background: 'rgba(255,255,255,0.92)',
-              border: '1px solid rgba(255,255,255,0.6)',
+              width: 36, height: 36, borderRadius: '50%',
+              background: 'rgba(255,255,255,0.85)',
+              border: '1px solid rgba(255,255,255,0.7)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', backdropFilter: 'blur(8px)',
               WebkitBackdropFilter: 'blur(8px)',
-              boxShadow: '0 2px 8px rgba(120,80,140,0.15)',
+              boxShadow: '0 2px 10px rgba(120,80,140,0.18)',
             }}
           >
-            <History size={13} color={c.charcoal} />
+            <History size={14} color={c.charcoal} />
           </button>
         )}
         {onOpenSettings && (
           <button
             onClick={onOpenSettings}
             style={{
-              width: 32, height: 32, borderRadius: '50%',
-              background: 'rgba(255,255,255,0.92)',
-              border: '1px solid rgba(255,255,255,0.6)',
+              width: 36, height: 36, borderRadius: '50%',
+              background: 'rgba(255,255,255,0.85)',
+              border: '1px solid rgba(255,255,255,0.7)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', backdropFilter: 'blur(8px)',
               WebkitBackdropFilter: 'blur(8px)',
-              boxShadow: '0 2px 8px rgba(120,80,140,0.15)',
+              boxShadow: '0 2px 10px rgba(120,80,140,0.18)',
             }}
           >
-            <Settings size={13} color={c.charcoal} />
+            <Settings size={14} color={c.charcoal} />
           </button>
         )}
       </div>
-      {/* Title + date */}
-      <div style={{
-        position: 'absolute', left: 22, bottom: 22, zIndex: 2,
-      }}>
+
+    <div style={{
+      padding: '22px 16px calc(40px + env(safe-area-inset-bottom)) 16px',
+      display: 'flex', flexDirection: 'column', gap: 14,
+      position: 'relative', zIndex: 1,
+    }}>
+      {/* Title sits over the lightest part of the sunset — dark serif-ish display */}
+      <div style={{ padding: '6px 6px 14px' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
           <h1 style={{
-            fontSize: 34, margin: 0, fontWeight: 800, letterSpacing: -0.8,
-            color: 'white',
-            textShadow: '0 2px 12px rgba(80,40,90,0.35)',
+            fontSize: 32, margin: 0, fontWeight: 800, letterSpacing: -0.8,
+            color: c.charcoal,
           }}>
             Bloom
           </h1>
-          <Heart size={14} style={{ color: 'white', filter: 'drop-shadow(0 1px 3px rgba(80,40,90,0.4))' }} fill="white" />
+          <Heart size={13} style={{ color: c.rosedeep }} fill={c.rosedeep} />
         </div>
         <div style={{
-          fontSize: 13, color: 'rgba(255,255,255,0.92)', marginTop: 4,
-          textShadow: '0 1px 6px rgba(80,40,90,0.4)', fontWeight: 500,
+          fontSize: 13, color: c.charcoal, marginTop: 4, fontWeight: 500, opacity: 0.78,
         }}>
           {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           {program ? ` · Week ${currentWeek}` : ''}
           {isDeload ? ' · Deload' : ''}
         </div>
       </div>
-    </div>
-
-    <div style={{
-      padding: '16px 16px calc(40px + env(safe-area-inset-bottom)) 16px',
-      display: 'flex', flexDirection: 'column', gap: 14,
-    }}>
 
       {/* This week's schedule — always visible, editable, marks done sessions */}
       {hasStarted && allSessions.length > 0 && (() => {

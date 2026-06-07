@@ -212,10 +212,9 @@ DO NOT generate the program yet. Just introduce yourself and ask if she has anyt
     <div style={{
       display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0,
       position: 'relative',
-      // Sky background — sits behind everything in the chat.
-      backgroundImage: 'url(/Wren.png)',
-      backgroundSize: 'cover',
-      backgroundPosition: 'center',
+      // Sky background lives on the WrenView parent so it stretches behind
+      // the header too — this stays transparent.
+      background: 'transparent',
     }}>
       {/* Scrollable message area */}
       <div
