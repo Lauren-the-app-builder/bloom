@@ -153,12 +153,14 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onO
           borderTopRightRadius: 32,
           // Softer pastel feel.
           filter: 'saturate(0.78) brightness(1.05)',
-          // Image content extends to ~y=449 (140% × natural 321). Mask is
-          // opaque through the top portion (above + first slice of card),
-          // then fades to fully transparent right where the image content
-          // ends — no harsh edge.
-          maskImage: 'linear-gradient(#000 0%, #000 40%, transparent 62%)',
-          WebkitMaskImage: 'linear-gradient(#000 0%, #000 40%, transparent 62%)',
+          // Long gradual fade. Opaque only through the area above the
+          // card (~y=259), then fades over a wide ~170px band, reaching
+          // fully transparent at y=432 — well BEFORE the image content
+          // ends at y=449. That 17px buffer hides the image's natural
+          // bottom edge, so there's no harsh line where it would
+          // otherwise abruptly stop.
+          maskImage: 'linear-gradient(#000 0%, #000 36%, transparent 60%)',
+          WebkitMaskImage: 'linear-gradient(#000 0%, #000 36%, transparent 60%)',
           pointerEvents: 'none',
           zIndex: 0,
         }}
@@ -212,7 +214,7 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onO
       {/* Title sits over the lightest part of the sunset. The large
           bottom padding pushes the New Week card down so more of the
           sunset is visible above it. */}
-      <div style={{ padding: '6px 6px 220px' }}>
+      <div style={{ padding: '6px 6px 175px' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
           <h1 style={{
             fontSize: 32, margin: 0, fontWeight: 800, letterSpacing: -0.8,
