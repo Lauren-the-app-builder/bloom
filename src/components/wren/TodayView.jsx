@@ -271,38 +271,42 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
             border: '1px solid rgba(255,255,255,0.7)',
             boxShadow: '0 12px 32px rgba(180,140,200,0.18)',
           }}>
-            {/* Lauren mode: Bloom + date headline lives at the top of this
-                card (instead of overlaying her). Soft pink gradient line
-                separates the headline from the schedule row below. */}
+            {/* Lauren mode: Bloom + date headline banner inside the top
+                of the card — pink→purple gradient, white text, no
+                divider. Negative margins extend it to the card edges
+                and the top corners match the card's 28px radius so it
+                reads as the card's own header. */}
             {background === 'lauren' && (
-              <>
-                <div style={{
-                  display: 'flex', alignItems: 'baseline', gap: 8,
-                  marginBottom: 12,
+              <div style={{
+                display: 'flex', alignItems: 'baseline', gap: 8,
+                margin: '-18px -18px 14px',
+                padding: '14px 18px',
+                background: `linear-gradient(135deg, ${c.rosedeep} 0%, ${c.rose} 100%)`,
+                borderTopLeftRadius: 28,
+                borderTopRightRadius: 28,
+              }}>
+                <h1 style={{
+                  fontSize: 22, margin: 0, fontWeight: 800, letterSpacing: -0.6,
+                  color: 'white',
+                  textShadow: '0 1px 4px rgba(80,40,90,0.25)',
                 }}>
-                  <h1 style={{
-                    fontSize: 22, margin: 0, fontWeight: 800, letterSpacing: -0.6,
-                    color: c.charcoal,
-                  }}>
-                    Bloom
-                  </h1>
-                  <Heart size={11} style={{ color: c.rosedeep }} fill={c.rosedeep} />
-                  <span style={{
-                    fontSize: 11, color: c.muted, fontWeight: 500, marginLeft: 4,
-                  }}>
-                    {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-                    {program ? ` · Week ${currentWeek}` : ''}
-                    {isDeload ? ' · Deload' : ''}
-                  </span>
-                </div>
-                <div style={{
-                  // Solid pink-rose line from edge to edge.
-                  height: 1,
-                  background: `linear-gradient(90deg, ${c.blush} 0%, ${c.rosedeep} 50%, ${c.blush} 100%)`,
-                  opacity: 0.6,
-                  marginBottom: 14,
-                }} />
-              </>
+                  Bloom
+                </h1>
+                <Heart
+                  size={11}
+                  style={{ color: 'white', filter: 'drop-shadow(0 1px 2px rgba(80,40,90,0.3))' }}
+                  fill="white"
+                />
+                <span style={{
+                  fontSize: 11, color: 'rgba(255,255,255,0.95)',
+                  fontWeight: 500, marginLeft: 4,
+                  textShadow: '0 1px 3px rgba(80,40,90,0.3)',
+                }}>
+                  {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                  {program ? ` · Week ${currentWeek}` : ''}
+                  {isDeload ? ' · Deload' : ''}
+                </span>
+              </div>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
               <div style={{
