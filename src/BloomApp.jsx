@@ -348,6 +348,9 @@ export default function BloomApp() {
   const [importHistoryFor, setImportHistoryFor] = useState(null); // workout object to import history for
   const [backfillFor, setBackfillFor] = useState(null); // workout object to log past session for
   const [sessionsBump, setSessionsBump] = useState(0); // re-render trigger when sessions change
+  // Which sub-view to open inside the coach tab (chat | program). Today's
+  // 'View program' button flips this to 'program' before switching tab.
+  const [coachInitialView, setCoachInitialView] = useState('chat');
   const [showLibrary, setShowLibrary] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -474,7 +477,8 @@ export default function BloomApp() {
           <TodayView
             onStartWorkout={(w) => { setInProgress(w); }}
             sessionsBump={sessionsBump}
-            onAskWren={() => setTab("coach")}
+            onAskWren={() => { setCoachInitialView('chat'); setTab("coach"); }}
+            onViewProgram={() => { setCoachInitialView('program'); setTab("coach"); }}
             onOpenHistory={() => setShowWeek(true)}
             onOpenSettings={() => setShowSettings(true)}
           />
@@ -486,6 +490,7 @@ export default function BloomApp() {
             unit={unit}
             allExercises={allExercises}
             sessionsBump={sessionsBump}
+            initialView={coachInitialView}
             onOpenSettings={() => setShowSettings(true)}
             onStartWorkout={(w) => { setInProgress(w); setTab("home"); }}
           />

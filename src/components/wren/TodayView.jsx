@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings } from 'lucide-react';
+import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, CalendarRange } from 'lucide-react';
 import { c } from './tokens';
 import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed } from '../../lib/storage';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
@@ -12,7 +12,7 @@ const SESSION_COLORS = {
   C: { gradient: 'linear-gradient(160deg, #FFD3B8 0%, #F4B8D4 50%, #C8B4E8 100%)', shadow: 'rgba(244,184,212,0.35)' },
 };
 
-export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onOpenHistory, onOpenSettings }) {
+export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onViewProgram, onOpenHistory, onOpenSettings }) {
   // Bumped after a manual schedule change to force a re-read of the program.
   const [scheduleBump, setScheduleBump] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -521,6 +521,42 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onO
           </div>
         );
       })()}
+
+      {/* View program — quick jump from Today into Wren's Program tab. */}
+      {program && onViewProgram && (
+        <button
+          onClick={onViewProgram}
+          style={{
+            width: '100%', padding: '14px 18px', borderRadius: 18,
+            background: 'rgba(255,255,255,0.85)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255,255,255,0.7)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 10, cursor: 'pointer', fontFamily: 'inherit',
+            boxShadow: '0 6px 20px rgba(180,140,200,0.14)',
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{
+              width: 30, height: 30, borderRadius: '50%',
+              background: `linear-gradient(135deg, ${c.blush}, ${c.rose})`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            }}>
+              <CalendarRange size={15} color="white" />
+            </span>
+            <span style={{ textAlign: 'left' }}>
+              <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: c.charcoal }}>
+                View program
+              </span>
+              <span style={{ display: 'block', fontSize: 11, color: c.muted, marginTop: 1 }}>
+                Your 12-week plan
+              </span>
+            </span>
+          </span>
+          <ChevronRight size={16} color={c.muted} />
+        </button>
+      )}
 
       {/* Program not started yet */}
       {program && !hasStarted && (

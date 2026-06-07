@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sparkles, Settings } from 'lucide-react';
 import { c } from './tokens';
 import { getActiveProgram } from '../../lib/storage';
@@ -6,8 +6,11 @@ import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 import WrenChat from './WrenChat';
 import ProgramView from './ProgramView';
 
-export default function WrenView({ schedule, myWorkouts, unit, allExercises, sessionsBump, onOpenSettings, onStartWorkout }) {
-  const [view, setView] = useState('chat');
+export default function WrenView({ schedule, myWorkouts, unit, allExercises, sessionsBump, onOpenSettings, onStartWorkout, initialView = 'chat' }) {
+  const [view, setView] = useState(initialView);
+  // Sync to the parent's requested view when it changes — lets the Today
+  // screen's 'View program' button land directly on the Program tab.
+  useEffect(() => { setView(initialView); }, [initialView]);
   const program = getActiveProgram();
   const { week } = getCurrentWeekAndMesocycle(program);
 
