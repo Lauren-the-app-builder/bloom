@@ -223,66 +223,33 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
     }}>
       {/* Title sits over the lightest part of the sunset. The large
           bottom padding pushes the New Week card down so more of the
-          sunset is visible above it.
-
-          Lauren mode: title is small + white + top-left, with the date
-          inline after the heart on the same line. Sunset is unchanged. */}
+          sunset is visible above it. Lauren mode hides this whole block
+          (the title moves inside the New Week card instead) and uses
+          a deeper bottom pad so the card clears Lauren's head. */}
+      {background !== 'lauren' && (
       <div style={{ padding: '6px 6px 175px', textAlign: 'left' }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'baseline',
-          gap: 8,
-          justifyContent: 'flex-start',
-          flexWrap: 'wrap',
-        }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
           <h1 style={{
-            fontSize: background === 'lauren' ? 18 : 32,
-            margin: 0,
-            fontWeight: 800,
-            letterSpacing: -0.8,
-            color: background === 'lauren' ? 'white' : c.charcoal,
-            textShadow: background === 'lauren' ? '0 2px 10px rgba(0,0,0,0.4)' : 'none',
+            fontSize: 32, margin: 0, fontWeight: 800, letterSpacing: -0.8,
+            color: c.charcoal,
           }}>
             Bloom
           </h1>
-          <Heart
-            size={background === 'lauren' ? 9 : 13}
-            style={{
-              color: background === 'lauren' ? 'white' : c.rosedeep,
-              filter: background === 'lauren' ? 'drop-shadow(0 1px 3px rgba(0,0,0,0.4))' : 'none',
-            }}
-            fill={background === 'lauren' ? 'white' : c.rosedeep}
-          />
-          {/* Lauren mode: date sits in the same row, right after the heart. */}
-          {background === 'lauren' && (
-            <span style={{
-              fontSize: 10,
-              color: 'rgba(255,255,255,0.95)',
-              fontWeight: 500,
-              textShadow: '0 1px 6px rgba(0,0,0,0.45)',
-              marginLeft: 4,
-            }}>
-              {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-              {program ? ` · Week ${currentWeek}` : ''}
-              {isDeload ? ' · Deload' : ''}
-            </span>
-          )}
+          <Heart size={13} style={{ color: c.rosedeep }} fill={c.rosedeep} />
         </div>
-        {/* Sunset mode: date on its own line below the title. */}
-        {background !== 'lauren' && (
         <div style={{
-          fontSize: 13,
-          color: c.charcoal,
-          marginTop: 4,
-          fontWeight: 500,
-          opacity: 0.78,
+          fontSize: 13, color: c.charcoal, marginTop: 4, fontWeight: 500, opacity: 0.78,
         }}>
           {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           {program ? ` · Week ${currentWeek}` : ''}
           {isDeload ? ' · Deload' : ''}
         </div>
-        )}
       </div>
+      )}
+      {/* Lauren mode: empty spacer that mirrors the title block's bottom
+          padding so the New Week card sits below Lauren's head, not
+          across it. */}
+      {background === 'lauren' && <div style={{ height: 240 }} />}
 
       {/* This week's schedule — always visible, editable, marks done sessions.
           Once all of this week's sessions are logged (and next week isn't
@@ -304,6 +271,32 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
             border: '1px solid rgba(255,255,255,0.7)',
             boxShadow: '0 12px 32px rgba(180,140,200,0.18)',
           }}>
+            {/* Lauren mode: Bloom + date headline lives at the top of this
+                card (instead of overlaying her). Sits above the schedule
+                row, divided by a hairline so the existing layout isn't
+                disturbed. */}
+            {background === 'lauren' && (
+              <div style={{
+                display: 'flex', alignItems: 'baseline', gap: 8,
+                paddingBottom: 12, marginBottom: 12,
+                borderBottom: `1px solid ${c.line}`,
+              }}>
+                <h1 style={{
+                  fontSize: 22, margin: 0, fontWeight: 800, letterSpacing: -0.6,
+                  color: c.charcoal,
+                }}>
+                  Bloom
+                </h1>
+                <Heart size={11} style={{ color: c.rosedeep }} fill={c.rosedeep} />
+                <span style={{
+                  fontSize: 11, color: c.muted, fontWeight: 500, marginLeft: 4,
+                }}>
+                  {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                  {program ? ` · Week ${currentWeek}` : ''}
+                  {isDeload ? ' · Deload' : ''}
+                </span>
+              </div>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
               <div style={{
                 width: 34, height: 34, borderRadius: '50%', background: c.white,
