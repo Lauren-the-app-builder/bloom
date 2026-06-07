@@ -249,7 +249,7 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
       {/* Lauren mode: empty spacer that mirrors the title block's bottom
           padding so the New Week card sits below Lauren's head, not
           across it. */}
-      {background === 'lauren' && <div style={{ height: 240 }} />}
+      {background === 'lauren' && <div style={{ height: 220 }} />}
 
       {/* This week's schedule — always visible, editable, marks done sessions.
           Once all of this week's sessions are logged (and next week isn't
@@ -272,30 +272,38 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
             boxShadow: '0 12px 32px rgba(180,140,200,0.18)',
           }}>
             {/* Lauren mode: Bloom + date headline lives at the top of this
-                card (instead of overlaying her). Sits above the schedule
-                row, divided by a hairline so the existing layout isn't
-                disturbed. */}
+                card (instead of overlaying her). Soft pink gradient line
+                separates the headline from the schedule row below. */}
             {background === 'lauren' && (
-              <div style={{
-                display: 'flex', alignItems: 'baseline', gap: 8,
-                paddingBottom: 12, marginBottom: 12,
-                borderBottom: `1px solid ${c.line}`,
-              }}>
-                <h1 style={{
-                  fontSize: 22, margin: 0, fontWeight: 800, letterSpacing: -0.6,
-                  color: c.charcoal,
+              <>
+                <div style={{
+                  display: 'flex', alignItems: 'baseline', gap: 8,
+                  marginBottom: 12,
                 }}>
-                  Bloom
-                </h1>
-                <Heart size={11} style={{ color: c.rosedeep }} fill={c.rosedeep} />
-                <span style={{
-                  fontSize: 11, color: c.muted, fontWeight: 500, marginLeft: 4,
-                }}>
-                  {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-                  {program ? ` · Week ${currentWeek}` : ''}
-                  {isDeload ? ' · Deload' : ''}
-                </span>
-              </div>
+                  <h1 style={{
+                    fontSize: 22, margin: 0, fontWeight: 800, letterSpacing: -0.6,
+                    color: c.charcoal,
+                  }}>
+                    Bloom
+                  </h1>
+                  <Heart size={11} style={{ color: c.rosedeep }} fill={c.rosedeep} />
+                  <span style={{
+                    fontSize: 11, color: c.muted, fontWeight: 500, marginLeft: 4,
+                  }}>
+                    {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                    {program ? ` · Week ${currentWeek}` : ''}
+                    {isDeload ? ' · Deload' : ''}
+                  </span>
+                </div>
+                <div style={{
+                  // Soft pink-rose hairline that fades into the card
+                  // edges — softer than a flat border, no visible ends.
+                  height: 1,
+                  background: `linear-gradient(90deg, transparent 0%, ${c.blush} 30%, ${c.rosedeep} 50%, ${c.blush} 70%, transparent 100%)`,
+                  opacity: 0.55,
+                  marginBottom: 14,
+                }} />
+              </>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
               <div style={{
