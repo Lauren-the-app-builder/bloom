@@ -18,12 +18,23 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
   // get their own settings so their natural aspect can be honored without
   // touching sunset.
   //
-  // Lauren.png is a 1023×1537 portrait, so it needs a smaller backgroundSize
-  // (full width, natural height) to show the whole subject rather than
-  // cropping into the head/torso.
+  // Lauren.png is a 1023×1537 portrait. At 75% width the rendered image is
+  // ~322×484 — small enough that her water bottle and towel (bottom-right
+  // of the photo) land inside the opaque area of a deeper Lauren-only mask,
+  // and a little page-gradient color shows on the sides.
   const BG_CONFIG = {
-    sunset: { src: '/sunset.png', size: '140% auto', position: 'top center' },
-    lauren: { src: '/Lauren.png', size: '100% auto', position: 'top center' },
+    sunset: {
+      src: '/sunset.png',
+      size: '140% auto',
+      position: 'top center',
+      mask: 'linear-gradient(#000 0%, #000 36%, transparent 60%)',
+    },
+    lauren: {
+      src: '/Lauren.png',
+      size: '75% auto',
+      position: 'top center',
+      mask: 'linear-gradient(#000 0%, #000 65%, transparent 90%)',
+    },
   };
   const heroBg = BG_CONFIG[background] || BG_CONFIG.sunset;
   // Bumped after a manual schedule change to force a re-read of the program.
@@ -166,14 +177,10 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
           borderTopRightRadius: 32,
           // Softer pastel feel.
           filter: 'saturate(0.78) brightness(1.05)',
-          // Long gradual fade. Opaque only through the area above the
-          // card (~y=259), then fades over a wide ~170px band, reaching
-          // fully transparent at y=432 — well BEFORE the image content
-          // ends at y=449. That 17px buffer hides the image's natural
-          // bottom edge, so there's no harsh line where it would
-          // otherwise abruptly stop.
-          maskImage: 'linear-gradient(#000 0%, #000 36%, transparent 60%)',
-          WebkitMaskImage: 'linear-gradient(#000 0%, #000 36%, transparent 60%)',
+          // Mask comes from BG_CONFIG so each background can tune its own
+          // fade. Sunset's mask is identical to the previous value.
+          maskImage: heroBg.mask,
+          WebkitMaskImage: heroBg.mask,
           pointerEvents: 'none',
           zIndex: 0,
         }}
