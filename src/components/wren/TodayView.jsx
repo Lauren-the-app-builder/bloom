@@ -12,7 +12,12 @@ const SESSION_COLORS = {
   C: { gradient: 'linear-gradient(160deg, #FFD3B8 0%, #F4B8D4 50%, #C8B4E8 100%)', shadow: 'rgba(244,184,212,0.35)' },
 };
 
-export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onViewProgram, onOpenHistory, onOpenSettings }) {
+export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onViewProgram, onOpenHistory, onOpenSettings, background = 'sunset' }) {
+  // The Today hero image — selectable from Settings, default 'sunset'.
+  // Filename matches public/<file>.png exactly; keep this map in sync with
+  // BG_OPTIONS in SettingsModal.
+  const BG_FILES = { sunset: '/sunset.png', lauren: '/Lauren.png' };
+  const heroImage = BG_FILES[background] || BG_FILES.sunset;
   // Bumped after a manual schedule change to force a re-read of the program.
   const [scheduleBump, setScheduleBump] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -145,7 +150,7 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
         aria-hidden="true"
         style={{
           position: 'absolute', top: 0, left: 0, right: 0, height: 720,
-          backgroundImage: 'url(/sunset.png)',
+          backgroundImage: `url(${heroImage})`,
           backgroundSize: '140% auto',
           backgroundRepeat: 'no-repeat',
           backgroundPosition: 'top center',
