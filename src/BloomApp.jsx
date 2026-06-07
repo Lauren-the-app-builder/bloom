@@ -1053,11 +1053,14 @@ function WorkoutPreview({ workout, onClose, onStart, onBackfill, onEdit, onExerc
                       </p>
                     );
                   })()}
-                  {lastEx && lastEx.length > 0 && (() => {
+                  {lastEx && lastEx.length > 0 && !isBandsExercise(exName, allExercises) && (() => {
                     // Same progressive-overload rule as ActiveWorkout:
                     //  - working weight = mode of last session
                     //  - bump only if every set AT that weight hit target reps
                     //  - bump = 5% of weight, min 1kg upper / 2.5kg lower
+                    // Skipped for bands exercises — there's no weight to
+                    // "stay at," and combo progression is rep-driven on the
+                    // logging screen, not pre-computed here.
                     const counts = new Map();
                     for (const s of lastEx) {
                       const w = Number(s.weight);
@@ -1220,6 +1223,11 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
     // displayed under each set number row, so we don't duplicate them here.
     const map = {};
     workout.exercises.forEach((name) => {
+      if (isBandsExercise(name, allExercises)) {
+        // Bands have no working weight; the band picker on the set row
+        // carries everything Lauren needs to see.
+        return;
+      }
       const s = perExerciseSuggestion(name);
       if (!s) {
         map[name] = workout.deload
@@ -2056,7 +2064,9 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
                 </div>
               </div>
 
-              {/* per-exercise recommendation */}
+              {/* per-exercise recommendation — hidden for bands exercises,
+                  which have no weight-based progression to display. */}
+              {!isBandsExercise(ex.name, allExercises) && (
               <div style={{ background: c.blushLight, borderRadius: 12, padding: "10px 12px", marginBottom: 10, display: "flex", gap: 8, alignItems: "flex-start" }}>
                 <Sparkles size={14} color={c.rosedeep} style={{ flexShrink: 0, marginTop: 2 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -2084,6 +2094,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
                   </button>
                 </div>
               </div>
+              )}
 
               {/* note */}
               {exerciseNotes[ex.name] ? (
