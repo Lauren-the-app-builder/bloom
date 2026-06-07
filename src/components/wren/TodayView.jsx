@@ -14,27 +14,17 @@ const SESSION_COLORS = {
 
 export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onViewProgram, onOpenHistory, onOpenSettings, background = 'sunset' }) {
   // Per-background hero config. Sunset's values are LOCKED — that look is
-  // the one the design was tuned for and must not change. New backgrounds
-  // get their own settings so their natural aspect can be honored without
-  // touching sunset.
-  //
-  // Lauren.png is a 1023×1537 portrait. At 75% width the rendered image is
-  // ~322×484 — small enough that her water bottle and towel (bottom-right
-  // of the photo) land inside the opaque area of a deeper Lauren-only mask,
-  // and a little page-gradient color shows on the sides.
+  // the one the design was tuned for. Lauren is now sized to the same
+  // 1480×1063 landscape aspect as sunset (1479×1063), so it uses identical
+  // size/position/mask values and renders with the same fade and framing.
+  const SUNSET_LIKE = {
+    size: '140% auto',
+    position: 'top center',
+    mask: 'linear-gradient(#000 0%, #000 36%, transparent 60%)',
+  };
   const BG_CONFIG = {
-    sunset: {
-      src: '/sunset.png',
-      size: '140% auto',
-      position: 'top center',
-      mask: 'linear-gradient(#000 0%, #000 36%, transparent 60%)',
-    },
-    lauren: {
-      src: '/Lauren.png',
-      size: '75% auto',
-      position: 'top center',
-      mask: 'linear-gradient(#000 0%, #000 65%, transparent 90%)',
-    },
+    sunset: { src: '/sunset.png', ...SUNSET_LIKE },
+    lauren: { src: '/Lauren.png', ...SUNSET_LIKE },
   };
   const heroBg = BG_CONFIG[background] || BG_CONFIG.sunset;
   // Bumped after a manual schedule change to force a re-read of the program.
