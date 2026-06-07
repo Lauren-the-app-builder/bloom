@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, CalendarRange } from 'lucide-react';
 import { c } from './tokens';
-import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed } from '../../lib/storage';
+import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed } from '../../lib/storage';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Sunday'];
@@ -17,6 +17,10 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
   const [scheduleBump, setScheduleBump] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [draft, setDraft] = useState({});
+  // Open state + draft for the "Plan next week" card, kept separate so the
+  // two pickers can't collide visually.
+  const [nextPickerOpen, setNextPickerOpen] = useState(false);
+  const [nextDraft, setNextDraft] = useState({});
   void scheduleBump;
   const rawProgram = getActiveProgram();
   const program = rawProgram?.program_json || rawProgram || null;
@@ -402,6 +406,126 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
                     onClick={() => setPickerOpen(false)}
                     style={{
                       padding: '10px 16px', borderRadius: 12, cursor: 'pointer',
+                      background: c.white, color: c.muted, fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+                      border: `1px solid ${c.line}`,
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Plan next week — shows after all of this week's sessions are
+          logged, until Lauren picks days for next week. Saving updates
+          every program week's scheduled_day and marks NEXT week as
+          confirmed (so the standard 'New week' card won't re-prompt
+          when Monday arrives). */}
+      {hasStarted && allSessions.length > 0 && sessionsThisWeek >= allSessions.length
+        && !isNextWeekScheduleConfirmed() && (() => {
+        return (
+          <div style={{
+            borderRadius: 28, padding: 18,
+            background: 'rgba(255,255,255,0.86)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255,255,255,0.7)',
+            boxShadow: '0 12px 32px rgba(180,140,200,0.18)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <div style={{
+                width: 34, height: 34, borderRadius: '50%',
+                background: `linear-gradient(135deg, ${c.blush}, ${c.rose})`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                <Sparkles size={16} color="white" />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: c.charcoal }}>
+                  Week {currentWeek} complete 🎉
+                </div>
+                <div style={{ fontSize: 12, color: c.muted, marginTop: 2, lineHeight: 1.45 }}>
+                  Plan your sessions for next week
+                </div>
+              </div>
+              {!nextPickerOpen && (
+                <button
+                  onClick={() => {
+                    // Prefill from current week's days so common patterns
+                    // (e.g. Mon/Wed/Fri) carry over.
+                    const init = {};
+                    for (const s of allSessions) init[s.session_label] = s.scheduled_day || '';
+                    setNextDraft(init);
+                    setNextPickerOpen(true);
+                  }}
+                  style={{
+                    background: c.rosedeep, border: 'none', borderRadius: 999,
+                    padding: '6px 14px', fontSize: 12, fontWeight: 700, color: 'white',
+                    cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
+                  }}
+                >
+                  Plan
+                </button>
+              )}
+            </div>
+
+            {nextPickerOpen && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {allSessions.map(s => (
+                  <div key={s.session_label}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: c.charcoal, marginBottom: 5 }}>
+                      Session {s.session_label}
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {WEEKDAYS.map(day => {
+                        const active = nextDraft[s.session_label] === day;
+                        const taken = !active && Object.entries(nextDraft).some(([lbl, d]) => lbl !== s.session_label && d === day);
+                        return (
+                          <button
+                            key={day}
+                            onClick={() => setNextDraft(d => ({ ...d, [s.session_label]: day }))}
+                            style={{
+                              padding: '6px 9px', borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit',
+                              fontSize: 11, fontWeight: 700,
+                              border: `1px solid ${active ? c.rosedeep : c.line}`,
+                              background: active ? c.rosedeep : c.white,
+                              color: active ? 'white' : taken ? c.muted : c.charcoal,
+                              opacity: taken ? 0.55 : 1,
+                            }}
+                          >
+                            {day.slice(0, 3)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+                  <button
+                    onClick={() => {
+                      const dayByLabel = {};
+                      for (const [lbl, day] of Object.entries(nextDraft)) if (day) dayByLabel[lbl] = day;
+                      // Mark NEXT week (not the current one) as confirmed so
+                      // this card disappears now and the "New week" prompt
+                      // stays quiet when Monday rolls over.
+                      if (Object.keys(dayByLabel).length) setProgramSchedule(dayByLabel, { confirmFor: 'next' });
+                      setNextPickerOpen(false);
+                      setScheduleBump(b => b + 1);
+                    }}
+                    style={{
+                      flex: 1, padding: '10px 0', borderRadius: 14, border: 'none', cursor: 'pointer',
+                      background: c.rosedeep, color: 'white', fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+                    }}
+                  >
+                    Save next week
+                  </button>
+                  <button
+                    onClick={() => setNextPickerOpen(false)}
+                    style={{
+                      padding: '10px 16px', borderRadius: 14, cursor: 'pointer',
                       background: c.white, color: c.muted, fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
                       border: `1px solid ${c.line}`,
                     }}

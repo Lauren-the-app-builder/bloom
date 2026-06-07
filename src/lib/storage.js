@@ -322,19 +322,42 @@ export function currentWeekKey(d = new Date()) {
   return x.toISOString().slice(0, 10);
 }
 
+// Monday-anchored key for next week. Used when Lauren plans next week
+// after finishing all of this week's sessions.
+export function nextWeekKey() {
+  const d = new Date();
+  d.setDate(d.getDate() + 7);
+  return currentWeekKey(d);
+}
+
 // Has Lauren set/confirmed her training days for the current week yet?
 export function isScheduleConfirmedThisWeek() {
   return load('scheduleWeekConfirmed', null) === currentWeekKey();
+}
+
+// Has Lauren already planned NEXT week? Stays true through this week and
+// rolls over: once next Monday arrives, currentWeekKey advances to that
+// value and isScheduleConfirmedThisWeek() also returns true.
+export function isNextWeekScheduleConfirmed() {
+  return load('scheduleWeekConfirmed', null) === nextWeekKey();
 }
 
 export function markScheduleConfirmed() {
   save('scheduleWeekConfirmed', currentWeekKey());
 }
 
+export function markNextWeekScheduleConfirmed() {
+  save('scheduleWeekConfirmed', nextWeekKey());
+}
+
 // Update which weekday each session falls on, across every week of the active
 // program, in place (no new program record). `dayByLabel` maps a session label
 // to a full weekday name, e.g. { A: 'Monday', B: 'Wednesday', C: 'Friday' }.
-export function setProgramSchedule(dayByLabel) {
+// Options:
+//   confirmFor — 'current' (default) marks this week confirmed; 'next' marks
+//                next week (used when planning ahead after finishing the
+//                current week); 'none' skips the confirmation update.
+export function setProgramSchedule(dayByLabel, { confirmFor = 'current' } = {}) {
   if (!dayByLabel || !Object.keys(dayByLabel).length) return null;
   const list = load('wrenProgram', []);
   const idx = list.findIndex(p => p.active);
@@ -362,7 +385,8 @@ export function setProgramSchedule(dayByLabel) {
   const newProgram = { ...program, weeks: newWeeks };
   list[idx] = entry.program_json ? { ...entry, program_json: newProgram } : newProgram;
   save('wrenProgram', list);
-  markScheduleConfirmed();
+  if (confirmFor === 'next') markNextWeekScheduleConfirmed();
+  else if (confirmFor === 'current') markScheduleConfirmed();
   return list[idx];
 }
 
