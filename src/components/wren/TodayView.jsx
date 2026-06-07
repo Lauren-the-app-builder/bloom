@@ -225,38 +225,42 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
           bottom padding pushes the New Week card down so more of the
           sunset is visible above it.
 
-          When Lauren is the active bg the title goes smaller + white
-          with a soft drop shadow so it stays readable against the
-          photo without obscuring her face. Sunset's styling is
-          unchanged. */}
-      <div style={{ padding: '6px 6px 175px' }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          Lauren mode: title centers, shrinks, and goes white with a
+          soft drop shadow so it sits cleanly above her head without
+          getting cut off. Sunset is unchanged. */}
+      <div style={{ padding: '6px 6px 175px', textAlign: background === 'lauren' ? 'center' : 'left' }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          gap: 8,
+          justifyContent: background === 'lauren' ? 'center' : 'flex-start',
+        }}>
           <h1 style={{
-            fontSize: background === 'lauren' ? 22 : 32,
+            fontSize: background === 'lauren' ? 18 : 32,
             margin: 0,
             fontWeight: 800,
             letterSpacing: -0.8,
             color: background === 'lauren' ? 'white' : c.charcoal,
-            textShadow: background === 'lauren' ? '0 2px 10px rgba(0,0,0,0.35)' : 'none',
+            textShadow: background === 'lauren' ? '0 2px 10px rgba(0,0,0,0.4)' : 'none',
           }}>
             Bloom
           </h1>
           <Heart
-            size={background === 'lauren' ? 10 : 13}
+            size={background === 'lauren' ? 9 : 13}
             style={{
               color: background === 'lauren' ? 'white' : c.rosedeep,
-              filter: background === 'lauren' ? 'drop-shadow(0 1px 3px rgba(0,0,0,0.35))' : 'none',
+              filter: background === 'lauren' ? 'drop-shadow(0 1px 3px rgba(0,0,0,0.4))' : 'none',
             }}
             fill={background === 'lauren' ? 'white' : c.rosedeep}
           />
         </div>
         <div style={{
-          fontSize: background === 'lauren' ? 11 : 13,
+          fontSize: background === 'lauren' ? 10 : 13,
           color: background === 'lauren' ? 'rgba(255,255,255,0.95)' : c.charcoal,
-          marginTop: 4,
+          marginTop: 3,
           fontWeight: 500,
           opacity: background === 'lauren' ? 1 : 0.78,
-          textShadow: background === 'lauren' ? '0 1px 6px rgba(0,0,0,0.4)' : 'none',
+          textShadow: background === 'lauren' ? '0 1px 6px rgba(0,0,0,0.45)' : 'none',
         }}>
           {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           {program ? ` · Week ${currentWeek}` : ''}
