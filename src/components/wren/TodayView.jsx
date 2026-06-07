@@ -132,18 +132,24 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onO
       flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch',
       position: 'relative',
     }}>
-      {/* Sunset hero — tall background that stretches behind the top cards
-          and softly fades into the page. Sits below all content. */}
+      {/* Sunset hero — tall background that stretches behind the title and
+          the New Week card and softly fades into the page. Rounded top
+          corners match the device frame. */}
       <div
         aria-hidden="true"
         style={{
-          position: 'absolute', top: 0, left: 0, right: 0, height: 640,
+          position: 'absolute', top: 0, left: 0, right: 0, height: 560,
           backgroundImage: 'url(/sunset.png)',
           backgroundSize: 'cover',
-          backgroundPosition: 'center top',
-          // Mask fades the image out toward the bottom so it blends into cream.
-          maskImage: 'linear-gradient(to bottom, black 0%, black 55%, transparent 100%)',
-          WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 55%, transparent 100%)',
+          // Shift the visible crop down so the sun sits between the title and
+          // the New Week card (not buried behind the card).
+          backgroundPosition: 'center 35%',
+          borderTopLeftRadius: 28,
+          borderTopRightRadius: 28,
+          // Mask fades the image out before the 6 exercises card begins, so
+          // the lower portion of the screen reads as plain cream.
+          maskImage: 'linear-gradient(to bottom, black 0%, black 68%, transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 68%, transparent 100%)',
           pointerEvents: 'none',
           zIndex: 0,
         }}
@@ -220,9 +226,13 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onO
         return (
           <div style={{
             borderRadius: 20, padding: 18,
-            background: `linear-gradient(135deg, ${c.blush} 0%, ${c.blushLight} 100%)`,
-            border: `1px solid ${c.line}`,
-            boxShadow: '0 8px 24px rgba(180,140,200,0.12)',
+            // Translucent white card sitting on the sunset — lets a hint of
+            // the image bleed through but keeps text fully legible.
+            background: 'rgba(255,255,255,0.86)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255,255,255,0.7)',
+            boxShadow: '0 12px 32px rgba(180,140,200,0.18)',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
               <div style={{
