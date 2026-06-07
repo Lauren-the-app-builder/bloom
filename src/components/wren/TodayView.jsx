@@ -132,24 +132,25 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onO
       flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch',
       position: 'relative',
     }}>
-      {/* Sunset hero — tall background that stretches behind the title and
-          the New Week card and softly fades into the page. Rounded top
-          corners match the device frame. */}
+      {/* Sunset hero — shows the full scene (sun, water, mountains,
+          flowers) at full width without cropping. Large rounded top
+          corners match the device frame, and a soft bottom mask dissolves
+          the image into the page. */}
       <div
         aria-hidden="true"
         style={{
-          position: 'absolute', top: 0, left: 0, right: 0, height: 560,
+          position: 'absolute', top: 0, left: 0, right: 0, height: 420,
           backgroundImage: 'url(/sunset.png)',
-          backgroundSize: 'cover',
-          // Shift the visible crop down so the sun sits between the title and
-          // the New Week card (not buried behind the card).
-          backgroundPosition: 'center 35%',
-          borderTopLeftRadius: 28,
-          borderTopRightRadius: 28,
-          // Mask fades the image out before the 6 exercises card begins, so
-          // the lower portion of the screen reads as plain cream.
-          maskImage: 'linear-gradient(to bottom, black 0%, black 68%, transparent 100%)',
-          WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 68%, transparent 100%)',
+          // 100% auto = full width, natural aspect — no zoom/crop, so the
+          // whole landscape shows like the design.
+          backgroundSize: '100% auto',
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'center top',
+          borderTopLeftRadius: 32,
+          borderTopRightRadius: 32,
+          // Soft fade into the page background.
+          maskImage: 'linear-gradient(to bottom, black 55%, transparent)',
+          WebkitMaskImage: 'linear-gradient(to bottom, black 55%, transparent)',
           pointerEvents: 'none',
           zIndex: 0,
         }}
@@ -225,7 +226,7 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onO
         const confirmed = isScheduleConfirmedThisWeek();
         return (
           <div style={{
-            borderRadius: 20, padding: 18,
+            borderRadius: 28, padding: 18,
             // Translucent white card sitting on the sunset — lets a hint of
             // the image bleed through but keeps text fully legible.
             background: 'rgba(255,255,255,0.86)',
@@ -284,7 +285,7 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onO
                         }}
                         style={{
                           display: 'flex', alignItems: 'center', gap: 10,
-                          padding: '8px 10px', borderRadius: 12, background: c.white,
+                          padding: '10px 12px', borderRadius: 16, background: c.white,
                           border: `1px solid ${c.line}`, cursor: 'pointer', textAlign: 'left',
                           fontFamily: 'inherit', width: '100%',
                         }}
@@ -298,17 +299,20 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onO
                           {s.session_label}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: done ? c.muted : c.charcoal, textDecoration: done ? 'line-through' : 'none' }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: c.charcoal }}>
                             Session {s.session_label}
                           </div>
                           <div style={{ fontSize: 11, color: c.muted }}>{s.scheduled_day || 'unscheduled'}</div>
                         </div>
                         {done ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#2e7d4a', fontSize: 11, fontWeight: 700 }}>
-                            <div style={{ width: 18, height: 18, borderRadius: '50%', background: '#4a8a5a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <Check size={12} color="white" strokeWidth={3} />
-                            </div>
-                            Done
+                          /* Quiet circle-check: outline ring with a slim check. */
+                          <div style={{
+                            width: 22, height: 22, borderRadius: '50%',
+                            border: `1.5px solid ${c.muted}`,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            flexShrink: 0,
+                          }}>
+                            <Check size={12} color={c.muted} strokeWidth={2.5} />
                           </div>
                         ) : isToday ? (
                           <span style={{ fontSize: 10, fontWeight: 700, color: c.rosedeep, background: c.blushLight, padding: '2px 8px', borderRadius: 999 }}>Today</span>
@@ -323,11 +327,13 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onO
                   <button
                     onClick={() => onAskWren && onAskWren()}
                     style={{
-                      width: '100%', marginTop: 10, padding: '9px 0', borderRadius: 12, cursor: 'pointer',
+                      width: '100%', marginTop: 10, padding: '10px 0', borderRadius: 14, cursor: 'pointer',
                       background: c.white, color: c.rosedeep, fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
                       border: `1px solid ${c.line}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                     }}
                   >
+                    <Sparkles size={13} color={c.rosedeep} />
                     Ask Wren to set them
                   </button>
                 )}
@@ -449,12 +455,24 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onO
             : `Next · ${pick.dayName}`;
         return (
           <div style={{
-            borderRadius: 24, overflow: 'hidden',
+            borderRadius: 32, overflow: 'hidden',
             background: colors.gradient,
             boxShadow: `0 16px 36px ${colors.shadow}`,
             color: 'white', position: 'relative',
           }}>
-            <div style={{ padding: '22px 22px 14px' }}>
+            {/* Flower decoration — sits on top-right of the gradient card. */}
+            <img
+              src="/flower.png"
+              alt=""
+              aria-hidden="true"
+              style={{
+                position: 'absolute', top: 14, right: 14,
+                height: 78, width: 'auto',
+                pointerEvents: 'none',
+                filter: 'drop-shadow(0 2px 6px rgba(120,80,140,0.2))',
+              }}
+            />
+            <div style={{ padding: '22px 22px 14px', position: 'relative' }}>
               <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.4, opacity: 0.9, textTransform: 'uppercase', textShadow: '0 1px 4px rgba(0,0,0,0.15)' }}>
                 Session {pick.session.session_label} · {headLabel}{isDeload ? ' · 🌙 Deload' : ''}
               </div>
@@ -490,13 +508,13 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onO
                 style={{
                   width: '100%', padding: '14px 0', borderRadius: 16,
                   border: 'none', cursor: 'pointer',
-                  background: 'rgba(255,255,255,0.95)', color: c.charcoal,
+                  background: 'rgba(255,255,255,0.95)', color: c.rosedeep,
                   fontSize: 15, fontWeight: 700,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                   boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                 }}
               >
-                <Play size={16} fill={c.charcoal} /> {pick.daysAhead === 0 ? 'Start Workout' : 'Start this workout'}
+                <Play size={16} fill={c.rosedeep} color={c.rosedeep} /> {pick.daysAhead === 0 ? 'Start Workout' : 'Start this workout'}
               </button>
             </div>
           </div>
@@ -566,6 +584,20 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onO
                 ? `${sessionsThisWeek} of ${allSessions.length} sessions done this week`
                 : `${sessionsThisWeek} session${sessionsThisWeek === 1 ? '' : 's'} done this week`}
             </div>
+            {/* Pink gradient progress bar — fills proportional to sessions done. */}
+            {allSessions.length > 0 && (
+              <div style={{
+                marginTop: 12, height: 6, borderRadius: 999,
+                background: 'rgba(180,140,200,0.18)', overflow: 'hidden',
+              }}>
+                <div style={{
+                  width: `${Math.min(100, Math.round((sessionsThisWeek / allSessions.length) * 100))}%`,
+                  height: '100%',
+                  background: `linear-gradient(90deg, ${c.blush} 0%, ${c.rosedeep} 100%)`,
+                  borderRadius: 999, transition: 'width 0.3s ease',
+                }} />
+              </div>
+            )}
           </div>
         </div>
       )}
