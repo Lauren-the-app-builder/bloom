@@ -24,10 +24,7 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
   };
   const BG_CONFIG = {
     sunset: { src: '/sunset.png', ...SUNSET_LIKE },
-    // 'center 80px' = horizontally centered, top of image 80px below the
-    // top of the hero — pushes Lauren's head clear of the "Bloom" title
-    // and the date line.
-    lauren: { src: '/Lauren.png', ...SUNSET_LIKE, position: 'center 80px' },
+    lauren: { src: '/Lauren.png', ...SUNSET_LIKE },
   };
   const heroBg = BG_CONFIG[background] || BG_CONFIG.sunset;
   // Bumped after a manual schedule change to force a re-read of the program.
@@ -226,19 +223,40 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
     }}>
       {/* Title sits over the lightest part of the sunset. The large
           bottom padding pushes the New Week card down so more of the
-          sunset is visible above it. */}
+          sunset is visible above it.
+
+          When Lauren is the active bg the title goes smaller + white
+          with a soft drop shadow so it stays readable against the
+          photo without obscuring her face. Sunset's styling is
+          unchanged. */}
       <div style={{ padding: '6px 6px 175px' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
           <h1 style={{
-            fontSize: 32, margin: 0, fontWeight: 800, letterSpacing: -0.8,
-            color: c.charcoal,
+            fontSize: background === 'lauren' ? 22 : 32,
+            margin: 0,
+            fontWeight: 800,
+            letterSpacing: -0.8,
+            color: background === 'lauren' ? 'white' : c.charcoal,
+            textShadow: background === 'lauren' ? '0 2px 10px rgba(0,0,0,0.35)' : 'none',
           }}>
             Bloom
           </h1>
-          <Heart size={13} style={{ color: c.rosedeep }} fill={c.rosedeep} />
+          <Heart
+            size={background === 'lauren' ? 10 : 13}
+            style={{
+              color: background === 'lauren' ? 'white' : c.rosedeep,
+              filter: background === 'lauren' ? 'drop-shadow(0 1px 3px rgba(0,0,0,0.35))' : 'none',
+            }}
+            fill={background === 'lauren' ? 'white' : c.rosedeep}
+          />
         </div>
         <div style={{
-          fontSize: 13, color: c.charcoal, marginTop: 4, fontWeight: 500, opacity: 0.78,
+          fontSize: background === 'lauren' ? 11 : 13,
+          color: background === 'lauren' ? 'rgba(255,255,255,0.95)' : c.charcoal,
+          marginTop: 4,
+          fontWeight: 500,
+          opacity: background === 'lauren' ? 1 : 0.78,
+          textShadow: background === 'lauren' ? '0 1px 6px rgba(0,0,0,0.4)' : 'none',
         }}>
           {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           {program ? ` · Week ${currentWeek}` : ''}
