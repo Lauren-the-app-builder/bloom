@@ -226,8 +226,6 @@ export default function ProgramView() {
         if (!weeks.length) return null;
         const isCollapsed = collapsedMeso[mi];
         const label = MESO_LABELS[mi];
-        // Flower accent marks the mesocycle currently in progress.
-        const isCurrentMeso = currentWeek > 0 && Math.floor((currentWeek - 1) / 4) === mi;
 
         return (
           <div key={mi} style={{ marginBottom: 16 }}>
@@ -251,19 +249,6 @@ export default function ProgramView() {
               <span style={{ fontSize: 12, color: c.muted }}>
                 — {label.subtitle}
               </span>
-              {isCurrentMeso && (
-                <img
-                  src="/flower.png"
-                  alt=""
-                  aria-hidden="true"
-                  style={{
-                    height: 38, width: 'auto', marginLeft: 'auto', marginRight: -4,
-                    marginTop: -10, marginBottom: -10,
-                    filter: 'drop-shadow(0 2px 4px rgba(201,122,174,0.18))',
-                    pointerEvents: 'none',
-                  }}
-                />
-              )}
             </button>
 
             {/* Weeks */}
