@@ -132,31 +132,32 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onO
       flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch',
       position: 'relative',
       // Page background — soft sunset-toned vertical gradient that sits
-      // BEHIND the hero and continues down the page, so the hero's bottom
-      // can dissolve into it with no hard edge.
-      background: 'linear-gradient(180deg, #F4DDE8 0%, #F0D8E2 18%, #F6E2DC 42%, #FBEFEC 65%, #FDF5F1 100%)',
+      // BEHIND the hero and continues down the page. The hero dissolves
+      // into this gradient with no visible edge.
+      background: 'linear-gradient(180deg, #F2D5E0 0%, #ECCBDB 22%, #E8C5D6 45%, #F1D9DE 68%, #F9EAE5 85%, #FDF5F1 100%)',
     }}>
-      {/* Sunset hero — full scene, full width, no crop. Large rounded top
-          corners. A long bottom mask dissolves the image into the page
-          gradient so there's no visible edge. */}
+      {/* Sunset hero — scaled up ~40% so the image extends past the New
+          Week card on the sides and reaches well down the page. Large
+          rounded top corners. A long bottom mask dissolves the image
+          into the page gradient. */}
       <div
         aria-hidden="true"
         style={{
-          position: 'absolute', top: 0, left: 0, right: 0, height: 540,
+          position: 'absolute', top: 0, left: 0, right: 0, height: 640,
           backgroundImage: 'url(/sunset.png)',
-          backgroundSize: '100% auto',
+          // 140% width keeps the full landscape readable (mountains, sun,
+          // water, flowers) while giving the hero real vertical presence.
+          backgroundSize: '140% auto',
           backgroundRepeat: 'no-repeat',
           backgroundPosition: 'top center',
           borderTopLeftRadius: 32,
           borderTopRightRadius: 32,
-          // Softer pastel tones — desaturate a touch and lift brightness so
-          // it reads as a faded watercolor rather than a vivid photo.
-          filter: 'saturate(0.78) brightness(1.04)',
-          // Long fade — opaque for the top 35%, gradually transparent the
-          // rest of the way, so the bottom edge of the hero blends into
-          // the sunset-toned page gradient with no hard transition.
-          maskImage: 'linear-gradient(#000 0%, #000 35%, transparent 100%)',
-          WebkitMaskImage: 'linear-gradient(#000 0%, #000 35%, transparent 100%)',
+          // Softer pastel feel.
+          filter: 'saturate(0.78) brightness(1.05)',
+          // Opaque through the New Week card area, then a long smooth fade
+          // into the page gradient — no hard edge.
+          maskImage: 'linear-gradient(#000 0%, #000 62%, transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(#000 0%, #000 62%, transparent 100%)',
           pointerEvents: 'none',
           zIndex: 0,
         }}
@@ -502,13 +503,14 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onO
                 style={{
                   width: '100%', padding: '14px 0', borderRadius: 16,
                   border: 'none', cursor: 'pointer',
-                  background: 'rgba(255,255,255,0.95)', color: c.rosedeep,
+                  background: `linear-gradient(135deg, ${c.blush} 0%, ${c.rosedeep} 100%)`,
+                  color: 'white',
                   fontSize: 15, fontWeight: 700,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                  boxShadow: '0 6px 16px rgba(201,122,174,0.35)',
                 }}
               >
-                <Play size={16} fill={c.rosedeep} color={c.rosedeep} /> {pick.daysAhead === 0 ? 'Start Workout' : 'Start this workout'}
+                <Play size={16} fill="white" color="white" /> {pick.daysAhead === 0 ? 'Start Workout' : 'Start this workout'}
               </button>
             </div>
           </div>
