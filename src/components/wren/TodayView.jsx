@@ -13,11 +13,19 @@ const SESSION_COLORS = {
 };
 
 export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onViewProgram, onOpenHistory, onOpenSettings, background = 'sunset' }) {
-  // The Today hero image — selectable from Settings, default 'sunset'.
-  // Filename matches public/<file>.png exactly; keep this map in sync with
-  // BG_OPTIONS in SettingsModal.
-  const BG_FILES = { sunset: '/sunset.png', lauren: '/Lauren.png' };
-  const heroImage = BG_FILES[background] || BG_FILES.sunset;
+  // Per-background hero config. Sunset's values are LOCKED — that look is
+  // the one the design was tuned for and must not change. New backgrounds
+  // get their own settings so their natural aspect can be honored without
+  // touching sunset.
+  //
+  // Lauren.png is a 1023×1537 portrait, so it needs a smaller backgroundSize
+  // (full width, natural height) to show the whole subject rather than
+  // cropping into the head/torso.
+  const BG_CONFIG = {
+    sunset: { src: '/sunset.png', size: '140% auto', position: 'top center' },
+    lauren: { src: '/Lauren.png', size: '100% auto', position: 'top center' },
+  };
+  const heroBg = BG_CONFIG[background] || BG_CONFIG.sunset;
   // Bumped after a manual schedule change to force a re-read of the program.
   const [scheduleBump, setScheduleBump] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -150,10 +158,10 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
         aria-hidden="true"
         style={{
           position: 'absolute', top: 0, left: 0, right: 0, height: 720,
-          backgroundImage: `url(${heroImage})`,
-          backgroundSize: '140% auto',
+          backgroundImage: `url(${heroBg.src})`,
+          backgroundSize: heroBg.size,
           backgroundRepeat: 'no-repeat',
-          backgroundPosition: 'top center',
+          backgroundPosition: heroBg.position,
           borderTopLeftRadius: 32,
           borderTopRightRadius: 32,
           // Softer pastel feel.
