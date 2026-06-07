@@ -14,9 +14,9 @@ const SESSION_COLORS = {
 
 export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onViewProgram, onOpenHistory, onOpenSettings, background = 'sunset' }) {
   // Per-background hero config. Sunset's values are LOCKED — that look is
-  // the one the design was tuned for. Lauren is now sized to the same
-  // 1480×1063 landscape aspect as sunset (1479×1063), so it uses identical
-  // size/position/mask values and renders with the same fade and framing.
+  // the one the design was tuned for. Lauren shares sunset's size + mask
+  // but uses a small vertical offset so her head sits below the date,
+  // instead of behind it.
   const SUNSET_LIKE = {
     size: '140% auto',
     position: 'top center',
@@ -24,7 +24,10 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
   };
   const BG_CONFIG = {
     sunset: { src: '/sunset.png', ...SUNSET_LIKE },
-    lauren: { src: '/Lauren.png', ...SUNSET_LIKE },
+    // 'center 80px' = horizontally centered, top of image 80px below the
+    // top of the hero — pushes Lauren's head clear of the "Bloom" title
+    // and the date line.
+    lauren: { src: '/Lauren.png', ...SUNSET_LIKE, position: 'center 80px' },
   };
   const heroBg = BG_CONFIG[background] || BG_CONFIG.sunset;
   // Bumped after a manual schedule change to force a re-read of the program.
