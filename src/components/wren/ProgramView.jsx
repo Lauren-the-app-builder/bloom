@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronRight, Sparkles } from 'lucide-react';
-import { c } from './tokens';
+import { c, comboLabel } from './tokens';
 import { getActiveProgram, setsForExercise, getSessions, load } from '../../lib/storage';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 
@@ -320,14 +320,26 @@ export default function ProgramView() {
                                         <>
                                           <span>{exName}</span>
                                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-                                            {done.map((s, j) => (
-                                              <span key={j} style={{
-                                                fontSize: 10, fontWeight: 700, color: '#2e7d4a',
-                                                background: '#e6f5ea', padding: '2px 7px', borderRadius: 999,
-                                              }}>
-                                                {s.weight}{unit} × {s.reps}
-                                              </span>
-                                            ))}
+                                            {done.map((s, j) => {
+                                              // Bands sets are saved with a bands array; render the
+                                              // combo label instead of a weight. Legacy single-band
+                                              // sets (s.band) still show their original label.
+                                              const isBandsSet = Array.isArray(s.bands);
+                                              const isLegacyBand = !isBandsSet && typeof s.band === 'string';
+                                              const label = isBandsSet
+                                                ? `${comboLabel(s.bands)} × ${s.reps}`
+                                                : isLegacyBand
+                                                  ? `${s.band} band × ${s.reps}`
+                                                  : `${s.weight}${unit} × ${s.reps}`;
+                                              return (
+                                                <span key={j} style={{
+                                                  fontSize: 10, fontWeight: 700, color: '#2e7d4a',
+                                                  background: '#e6f5ea', padding: '2px 7px', borderRadius: 999,
+                                                }}>
+                                                  {label}
+                                                </span>
+                                              );
+                                            })}
                                           </div>
                                         </>
                                       ) : (

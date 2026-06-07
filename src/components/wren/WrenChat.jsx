@@ -107,7 +107,7 @@ Goal: lean, muscular physique. Big focus on shoulders. Wants her first unassiste
 Structure: 3x full body per week, days flex. Hyrox on Saturdays (awareness only).
 Program starts: Monday May 25th.
 Exercises to AVOID: squats, Bulgarian split squats, deadlifts, lunges. Hip thrusts OK but no single-leg.
-Assisted pull-ups: uses resistance bands (heavy → medium → light → none).
+Assisted pull-ups: logs as a band-color combo (any of green/blue/yellow/red/purple, stackable). 10 reps at a combo is the cue for her to pick a new combo — she chooses it, you don't prescribe one. Combo changes are not regressions.
 
 DO NOT generate the program yet. Just introduce yourself and ask if she has anything to add. Keep it to 2-3 sentences. Be warm.`;
 

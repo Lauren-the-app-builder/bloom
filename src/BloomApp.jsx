@@ -96,6 +96,8 @@ import WrenView from "./components/wren/WrenView";
 import TodayView from "./components/wren/TodayView";
 import NudgeCard from "./components/wren/NudgeCard";
 import MissedSessionBanner from "./components/wren/MissedSessionBanner";
+import BandComboPicker from "./components/wren/BandComboPicker";
+import { comboKey, comboLabel } from "./components/wren/tokens";
 import PostSessionReaction from "./components/wren/PostSessionReaction";
 import { askWren } from "./lib/wren";
 import { SCENES, SceneSvg, defaultSceneFor } from "./lib/scenes.jsx";
@@ -193,6 +195,7 @@ const EXERCISE_DB = [
   { id: "e9", name: "Lat Pulldown", muscle: "Lats", restSec: 90, tips: ["Pull elbows down and back", "Squeeze lats at the bottom", "Don't lean back excessively"], videoId: "CAwf7n6Luuc" },
   { id: "e10", name: "Seated Cable Row", muscle: "Mid back", restSec: 90, tips: ["Chest up, shoulders down", "Pull to lower ribs", "Squeeze shoulder blades"], videoId: "GZbfZ033f74" },
   { id: "e46", name: "Pull-Up", muscle: "Lats", restSec: 120, tips: ["Full hang at the bottom", "Drive elbows down", "Chin over bar"], videoId: "eGo4IYlbE5g" },
+  { id: "e46b", name: "Assisted Pull-Ups", muscle: "Lats", restSec: 120, loadType: "bands", tips: ["Stack bands as needed to hit your target reps", "Drive elbows down, chin over bar", "Slow eccentric — 2 sec down", "10 reps = ready to pick a lighter combo"], videoId: "eGo4IYlbE5g" },
   { id: "e47", name: "Chin-Up", muscle: "Lats/Biceps", restSec: 120, tips: ["Underhand grip", "Squeeze at the top", "Slow lower"], videoId: "brhRXlOhsAM" },
   { id: "e48", name: "Barbell Row", muscle: "Mid back", restSec: 120, tips: ["Hinge to ~45°", "Pull to belly button", "Don't shrug"], videoId: "9efgcAjQe7E" },
   { id: "e49", name: "DB Row", muscle: "Lats", restSec: 75, tips: ["Pull elbow back, not up", "Squeeze at the top", "Don't rotate torso"], videoId: "pYcpY20QaE8" },
@@ -232,6 +235,16 @@ const EXERCISE_DB = [
 ];
 
 // ---------- focus lift data (Barbell Overhead Press) ----------
+// Returns true when an exercise logs band combos (chip picker) instead of a
+// weight. Checks the explicit loadType field first, then falls back to a
+// name pattern so Wren-generated names like "Assisted pull-ups" still work.
+function isBandsExercise(name, allExercises = EXERCISE_DB) {
+  if (!name) return false;
+  const ex = allExercises.find(e => e.name?.toLowerCase() === String(name).toLowerCase());
+  if (ex?.loadType === "bands") return true;
+  return /assisted\s*pull[\s-]*up/i.test(name);
+}
+
 const FOCUS_LIFT = {
   name: "Barbell Overhead Press",
   startedTracking: "Feb 10",
@@ -1377,11 +1390,18 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
         const aim = last + 1;
         return tReps ? Math.min(aim, tReps) : aim;
       };
+      const isBands = isBandsExercise(name, allExercises);
+      // For bands exercises, prefill the combo from the most recent logged
+      // set's bands array (Lauren typically repeats or tweaks her combo
+      // across sets within a session).
+      const prefillCombo = isBands
+        ? (lastEx?.find(s => Array.isArray(s?.bands))?.bands || [])
+        : null;
       return {
         name,
         rows: Array.from({ length: numSets }).map((_, i) => {
           const lastSet = lastEx?.[i];
-          return {
+          const row = {
             reps: "",
             weight: "",
             done: false,
@@ -1390,6 +1410,12 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
             prevReps: lastSet?.reps ?? null,
             prevWeight: lastSet?.weight ?? null,
           };
+          if (isBands) {
+            // Bands-loaded rows carry a combo array instead of a weight.
+            row.bands = Array.isArray(lastSet?.bands) ? [...lastSet.bands] : [...(prefillCombo || [])];
+            row.prevBands = Array.isArray(lastSet?.bands) ? [...lastSet.bands] : null;
+          }
+          return row;
         }),
       };
     })
@@ -1709,20 +1735,33 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
     // null = no target to judge against).
     const perSetStatus = {};
     sets.forEach(ex => {
-      // Record any set that's marked done and has at least reps or weight.
+      const isBands = isBandsExercise(ex.name, allExercises);
+      // Record any set that's marked done and has at least reps or load.
       // Treat missing values as 0 (e.g. bodyweight exercises have weight=0).
       const done = [];
       const statuses = [];
       for (const r of ex.rows) {
-        if (!(r.done && (r.reps !== "" || r.weight !== ""))) continue;
-        const reps = toNum(r.reps);
-        const weight = toNum(r.weight);
-        done.push({ reps, weight });
-        const tReps = Number(r.targetReps) || 0;
-        const tWeight = Number(r.targetWeight) || 0;
-        if (tReps && tWeight) statuses.push(weight >= tWeight && reps >= tReps);
-        else if (tReps) statuses.push(reps >= tReps);
-        else statuses.push(null); // no target — can't judge
+        // Bands rows save with { reps, bands: [...] }; weight rows with
+        // { reps, weight }. Bands rows count when done + reps logged.
+        if (isBands) {
+          if (!(r.done && r.reps !== "")) continue;
+          const reps = toNum(r.reps);
+          done.push({ reps, bands: Array.isArray(r.bands) ? [...r.bands] : [] });
+          const tReps = Number(r.targetReps) || 0;
+          // For bands we judge "on target" by rep count alone — colors carry
+          // no ranking.
+          statuses.push(tReps ? reps >= tReps : null);
+        } else {
+          if (!(r.done && (r.reps !== "" || r.weight !== ""))) continue;
+          const reps = toNum(r.reps);
+          const weight = toNum(r.weight);
+          done.push({ reps, weight });
+          const tReps = Number(r.targetReps) || 0;
+          const tWeight = Number(r.targetWeight) || 0;
+          if (tReps && tWeight) statuses.push(weight >= tWeight && reps >= tReps);
+          else if (tReps) statuses.push(reps >= tReps);
+          else statuses.push(null); // no target — can't judge
+        }
       }
       if (done.length) { exMap[ex.name] = done; perSetStatus[ex.name] = statuses; }
     });
@@ -2083,25 +2122,84 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
                 <span></span>
               </div>
 
-              {ex.rows.map((row, ri) => (
-                <div key={ri} style={{ display: "grid", gridTemplateColumns: "24px 1fr 1fr 1fr 32px 28px", gap: 6, alignItems: "center", marginBottom: 6 }}>
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: c.muted }}>{ri + 1}</span>
-                    {row.targetReps && <span style={{ fontSize: 8, color: c.rosedeep, fontWeight: 700, lineHeight: 1 }}>×{row.targetReps}</span>}
+              {ex.rows.map((row, ri) => {
+                const isBands = isBandsExercise(ex.name, allExercises);
+                if (isBands) {
+                  // For bands rows the kg input is replaced by a band-combo
+                  // picker. The picker is two lines, so each set sits in its
+                  // own card-row stacked vertically.
+                  const repsNum = parseInt(row.reps, 10);
+                  const hitTen = Number.isFinite(repsNum) && repsNum >= 10;
+                  const prevLabel = Array.isArray(row.prevBands)
+                    ? `${row.prevReps != null ? row.prevReps + ' × ' : ''}${comboLabel(row.prevBands)}`
+                    : "—";
+                  return (
+                    <div key={ri} style={{
+                      display: "flex", flexDirection: "column", gap: 8,
+                      padding: "10px 10px 10px 12px", borderRadius: 12,
+                      border: `1px solid ${c.line}`, background: c.white,
+                      marginBottom: 8,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 24 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: c.muted }}>{ri + 1}</span>
+                          {row.targetReps && <span style={{ fontSize: 8, color: c.rosedeep, fontWeight: 700, lineHeight: 1 }}>×{row.targetReps}</span>}
+                        </div>
+                        <span style={{ flex: 1, fontSize: 10, color: c.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          prev: {prevLabel}
+                        </span>
+                        <input
+                          value={row.reps}
+                          onChange={(e) => updateRow(ei, ri, "reps", e.target.value)}
+                          placeholder="reps"
+                          inputMode="numeric"
+                          style={{ ...inputStyle(row.done), width: 56 }}
+                        />
+                        <button onClick={() => toggleDone(ei, ri)} style={{ background: row.done ? c.rosedeep : c.white, border: `1px solid ${row.done ? c.rosedeep : c.line}`, borderRadius: 8, width: 32, height: 32, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          {row.done && <Check size={16} color="white" />}
+                        </button>
+                        <button onClick={() => removeSet(ei, ri)} style={{ background: "none", border: "none", color: c.muted, cursor: "pointer", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }} title="Remove set">
+                          <X size={14} />
+                        </button>
+                      </div>
+                      <BandComboPicker
+                        value={row.bands || []}
+                        onChange={(next) => updateRow(ei, ri, "bands", next)}
+                      />
+                      {row.done && hitTen && (
+                        // Progression cue. Don't suggest a specific next combo —
+                        // Lauren picks it herself. Just flag it.
+                        <div style={{
+                          fontSize: 11, color: c.rosedeep, fontWeight: 600,
+                          background: c.blushLight, padding: "6px 10px", borderRadius: 8,
+                          lineHeight: 1.35,
+                        }}>
+                          {repsNum} reps on {comboLabel(row.bands || [])}. Ready for a lighter combo when you are.
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+                return (
+                  <div key={ri} style={{ display: "grid", gridTemplateColumns: "24px 1fr 1fr 1fr 32px 28px", gap: 6, alignItems: "center", marginBottom: 6 }}>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: c.muted }}>{ri + 1}</span>
+                      {row.targetReps && <span style={{ fontSize: 8, color: c.rosedeep, fontWeight: 700, lineHeight: 1 }}>×{row.targetReps}</span>}
+                    </div>
+                    <span style={{ fontSize: 11, color: c.muted }}>
+                      {row.prevReps != null && row.prevWeight != null ? `${row.prevReps}×${row.prevWeight}${unit}` : "—"}
+                    </span>
+                    <input value={row.reps} onChange={(e) => updateRow(ei, ri, "reps", e.target.value)} placeholder="reps" style={inputStyle(row.done)} />
+                    <input type="text" inputMode="decimal" value={row.weight} onChange={(e) => updateRow(ei, ri, "weight", e.target.value)} placeholder={row.targetWeight || unit} style={inputStyle(row.done)} />
+                    <button onClick={() => toggleDone(ei, ri)} style={{ background: row.done ? c.rosedeep : c.white, border: `1px solid ${row.done ? c.rosedeep : c.line}`, borderRadius: 8, width: 32, height: 32, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {row.done && <Check size={16} color="white" />}
+                    </button>
+                    <button onClick={() => removeSet(ei, ri)} style={{ background: "none", border: "none", color: c.muted, cursor: "pointer", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }} title="Remove set">
+                      <X size={14} />
+                    </button>
                   </div>
-                  <span style={{ fontSize: 11, color: c.muted }}>
-                    {row.prevReps != null && row.prevWeight != null ? `${row.prevReps}×${row.prevWeight}${unit}` : "—"}
-                  </span>
-                  <input value={row.reps} onChange={(e) => updateRow(ei, ri, "reps", e.target.value)} placeholder="reps" style={inputStyle(row.done)} />
-                  <input type="text" inputMode="decimal" value={row.weight} onChange={(e) => updateRow(ei, ri, "weight", e.target.value)} placeholder={row.targetWeight || unit} style={inputStyle(row.done)} />
-                  <button onClick={() => toggleDone(ei, ri)} style={{ background: row.done ? c.rosedeep : c.white, border: `1px solid ${row.done ? c.rosedeep : c.line}`, borderRadius: 8, width: 32, height: 32, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    {row.done && <Check size={16} color="white" />}
-                  </button>
-                  <button onClick={() => removeSet(ei, ri)} style={{ background: "none", border: "none", color: c.muted, cursor: "pointer", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }} title="Remove set">
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
               <button onClick={() => addSet(ei)} style={{ width: "100%", marginTop: 8, background: c.blushLight, border: `1px dashed ${c.rose}`, borderRadius: 10, padding: 8, color: c.rosedeep, fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
                 <Plus size={14} /> Add set
               </button>

@@ -1,6 +1,7 @@
 // Pure utility functions for the Wren coaching system.
 
 import { load } from '../../lib/storage';
+import { comboKey, comboLabel } from './tokens';
 
 // ---------- Plateau detection ----------
 // Flag exercises with no weight or rep improvement across the last 3+ sessions.
@@ -117,12 +118,24 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
     .sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
   const lastSession = sorted[0] || null;
 
-  // Build per-exercise best weight/reps from ALL session history.
+  // Build per-exercise best weight/reps from ALL session history. Bands
+  // sets (no weight) are tracked separately as bandsBestReps — keyed by
+  // exercise and combo — so Wren can see Lauren's PR rep count per combo.
   const liftBests = {};
+  const bandsBestReps = {}; // { [exerciseName]: { [comboKey]: { combo: [...], reps: N, date: ms } } }
   for (const s of sessions) {
     if ((s.workoutName || '').includes('(past entry)')) continue;
     for (const [name, sets] of Object.entries(s.exercises || {})) {
       for (const set of sets) {
+        if (Array.isArray(set.bands)) {
+          const key = comboKey(set.bands);
+          const reps = Number(set.reps) || 0;
+          const bucket = bandsBestReps[name] || (bandsBestReps[name] = {});
+          if (!bucket[key] || reps > bucket[key].reps) {
+            bucket[key] = { combo: [...set.bands], reps, date: Number(s.finishedAt) || 0 };
+          }
+          continue;
+        }
         const w = Number(set.weight) || 0;
         const r = Number(set.reps) || 0;
         if (!liftBests[name] || w > liftBests[name].weight || (w === liftBests[name].weight && r > liftBests[name].reps)) {
@@ -132,6 +145,16 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
     }
   }
 
+  // Human-readable summary Wren can quote back, e.g.
+  //   "Assisted Pull-Ups (bands): best 9 reps on Green + Blue; 6 reps on Green ×2"
+  const bandsSummary = {};
+  for (const [name, byCombo] of Object.entries(bandsBestReps)) {
+    bandsSummary[name] = Object.values(byCombo)
+      .sort((a, b) => b.reps - a.reps)
+      .map(b => `${b.reps} reps on ${comboLabel(b.combo)}`)
+      .join('; ');
+  }
+
   return {
     currentWeek: week,
     currentMesocycle: mesocycle,
@@ -139,6 +162,8 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
     isDeload,
     plateauFlags,
     liftBests,
+    bandsBestReps,
+    bandsSummary,
     missedSessionCount: recentMisses.length,
     missedSessionDetails: recentMisses,
     thisWeekSessions: thisWeekSessions.map(s => s.workoutName),
