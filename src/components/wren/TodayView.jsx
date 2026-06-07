@@ -225,15 +225,15 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
           bottom padding pushes the New Week card down so more of the
           sunset is visible above it.
 
-          Lauren mode: title centers, shrinks, and goes white with a
-          soft drop shadow so it sits cleanly above her head without
-          getting cut off. Sunset is unchanged. */}
-      <div style={{ padding: '6px 6px 175px', textAlign: background === 'lauren' ? 'center' : 'left' }}>
+          Lauren mode: title is small + white + top-left, with the date
+          inline after the heart on the same line. Sunset is unchanged. */}
+      <div style={{ padding: '6px 6px 175px', textAlign: 'left' }}>
         <div style={{
           display: 'flex',
           alignItems: 'baseline',
           gap: 8,
-          justifyContent: background === 'lauren' ? 'center' : 'flex-start',
+          justifyContent: 'flex-start',
+          flexWrap: 'wrap',
         }}>
           <h1 style={{
             fontSize: background === 'lauren' ? 18 : 32,
@@ -253,19 +253,35 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
             }}
             fill={background === 'lauren' ? 'white' : c.rosedeep}
           />
+          {/* Lauren mode: date sits in the same row, right after the heart. */}
+          {background === 'lauren' && (
+            <span style={{
+              fontSize: 10,
+              color: 'rgba(255,255,255,0.95)',
+              fontWeight: 500,
+              textShadow: '0 1px 6px rgba(0,0,0,0.45)',
+              marginLeft: 4,
+            }}>
+              {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+              {program ? ` · Week ${currentWeek}` : ''}
+              {isDeload ? ' · Deload' : ''}
+            </span>
+          )}
         </div>
+        {/* Sunset mode: date on its own line below the title. */}
+        {background !== 'lauren' && (
         <div style={{
-          fontSize: background === 'lauren' ? 10 : 13,
-          color: background === 'lauren' ? 'rgba(255,255,255,0.95)' : c.charcoal,
-          marginTop: 3,
+          fontSize: 13,
+          color: c.charcoal,
+          marginTop: 4,
           fontWeight: 500,
-          opacity: background === 'lauren' ? 1 : 0.78,
-          textShadow: background === 'lauren' ? '0 1px 6px rgba(0,0,0,0.45)' : 'none',
+          opacity: 0.78,
         }}>
           {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           {program ? ` · Week ${currentWeek}` : ''}
           {isDeload ? ' · Deload' : ''}
         </div>
+        )}
       </div>
 
       {/* This week's schedule — always visible, editable, marks done sessions.
