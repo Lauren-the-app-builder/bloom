@@ -23,6 +23,7 @@ export async function askWren(message, context = {}, midWorkout = false) {
     exerciseDb,
     bandsBestReps = {},
     bandsSummary = {},
+    weeklyMiss = null,
   } = context;
 
   const res = await fetch(API, {
@@ -50,6 +51,7 @@ export async function askWren(message, context = {}, midWorkout = false) {
         unit,
         bandsBestReps,
         bandsSummary,
+        weeklyMiss,
       },
       midWorkout,
     }),

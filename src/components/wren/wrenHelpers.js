@@ -26,8 +26,52 @@ export function detectPlateaus(sessions, exerciseNames) {
   return flags;
 }
 
-// ---------- Missed session detection ----------
+// ---------- Weekly miss check ----------
+// Sunday-anchored: at the end of each program week, count how many of the
+// scheduled sessions weren't logged. Because Lauren flexes her days within
+// the week, day-by-day detection lights up false positives (training A on
+// Tuesday instead of Monday would still flag Monday). This runs once a
+// week and only counts what's truly short.
+//
+// Returns { isCheckDay, scheduledCount, loggedCount, missedCount }.
+// isCheckDay is true on Sunday (day 0) and remains the gate the banner
+// uses — pass `force: true` to bypass for things like Wren's context.
+export function computeWeeklyMissesForProgram(program, sessions, { now = new Date(), force = false } = {}) {
+  const day = now.getDay();
+  const isCheckDay = day === 0; // Sunday
+  if (!isCheckDay && !force) {
+    return { isCheckDay: false, scheduledCount: 0, loggedCount: 0, missedCount: 0 };
+  }
+
+  const programData = program?.program_json || program || null;
+  const { week: currentWeek, startDate, hasStarted } = getCurrentWeekAndMesocycle(program);
+  if (!hasStarted || !programData?.weeks?.length || currentWeek <= 0) {
+    return { isCheckDay, scheduledCount: 0, loggedCount: 0, missedCount: 0 };
+  }
+
+  const weekIdx = Math.min(Math.max(0, currentWeek - 1), programData.weeks.length - 1);
+  const wkData = programData.weeks[weekIdx];
+  const wkSessions = Array.isArray(wkData?.sessions)
+    ? wkData.sessions
+    : (wkData?.sessions ? Object.values(wkData.sessions) : []);
+  const scheduledCount = wkSessions.length;
+
+  const weekStart = startDate.getTime() + (currentWeek - 1) * 7 * 86400000;
+  const weekEnd = weekStart + 7 * 86400000;
+  const loggedCount = (sessions || []).filter(s =>
+    Number(s.finishedAt) >= weekStart &&
+    Number(s.finishedAt) < weekEnd &&
+    !(s.workoutName || '').includes('(past entry)')
+  ).length;
+
+  const missedCount = Math.max(0, scheduledCount - loggedCount);
+  return { isCheckDay, scheduledCount, loggedCount, missedCount, weekNumber: currentWeek };
+}
+
+// ---------- Missed session detection (legacy day-based) ----------
 // Compare schedule + logged sessions to find unlogged scheduled days in the lookback window.
+// Kept for the legacy myWorkouts flow; the Wren program flow uses
+// computeWeeklyMissesForProgram instead.
 export function computeMissedSessions(schedule, workouts, sessions, lookbackDays = 7) {
   const missed = [];
   const now = new Date();
@@ -103,6 +147,10 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
   const cutoff28 = Date.now() - 28 * 86400000;
   const recentMisses = (missedSessions || []).filter(m => new Date(m.session_date || m.date).getTime() > cutoff28);
 
+  // Weekly miss check — forced so Wren sees this any day, not just Sundays.
+  // She uses it to know how the current week is tracking.
+  const weeklyMiss = computeWeeklyMissesForProgram(program, sessions, { force: true });
+
   // Figure out this week's session status.
   const startOfWeek = (() => {
     const d = new Date(); d.setHours(0, 0, 0, 0);
@@ -166,6 +214,7 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
     bandsSummary,
     missedSessionCount: recentMisses.length,
     missedSessionDetails: recentMisses,
+    weeklyMiss,
     thisWeekSessions: thisWeekSessions.map(s => s.workoutName),
     lastSessionData: lastSession ? {
       name: lastSession.workoutName,

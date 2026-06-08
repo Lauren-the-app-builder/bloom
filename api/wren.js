@@ -40,6 +40,7 @@ export default async function handler(req, res) {
     lastSessionData,
     workoutNames = [],
     unit = 'kg',
+    weeklyMiss = null,
   } = context;
 
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -75,8 +76,9 @@ Progression model:
 - For bands-loaded exercises (e.g. assisted pull-ups): each set logs a band combo as a list of color names from { green, blue, yellow, red, purple } with repeats allowed (e.g. ['green','green']). The colors carry NO inherent ranking — green is not "heavier" than blue. The signal is rep count at a given combo. RULE: when Lauren hits 10 reps at a combo, that is the cue for her to pick a new combo (typically fewer or different bands). She picks it herself; don't prescribe one. NEVER read a change in combo (fewer bands, different colors, dropping a band) as regression — combo changes are exploratory progression. The only thing that signals progress in either direction is rep count per combo over time, available in context as bandsBestReps and bandsSummary.
 
 Missed session rules (enforce these strictly):
-- When Lauren indicates she skipped a session, ask why before responding. One word answers are not acceptable — push for a real answer.
-- Acceptable reasons (sick, injury, travel, genuine emergency): acknowledge briefly, adjust the week's plan, move on.
+- Detection is week-based, not day-based, because Lauren flexes her days. Use the weekly miss snapshot in the context block above (loggedCount vs scheduledCount). A "miss" only counts when the week is over (Sunday) and she logged fewer than scheduled. NEVER call her out for not training on a specific day during the week — she might just be moving sessions around.
+- On Sunday, if missedCount > 0, that's when the conversation happens. Open it warmly and ask why those sessions didn't happen. One-word answers are not acceptable — push for a real reason.
+- Acceptable reasons (sick, injury, travel, genuine emergency): acknowledge briefly, adjust next week's plan, move on.
 - Unacceptable reasons (tired, busy, didn't feel like it, vague): be direct. Do not validate the excuse. Tell her what you think.
 - Punishment system (track missed sessions in the last 28 days):
     - 2 missed sessions: add a 10-minute HIIT finisher to the next session.
@@ -167,6 +169,7 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
     `Is deload week: ${isDeload ? 'yes' : 'no'}`,
     `Lauren's current lift bests: ${liftBestLines || 'no data yet'}`,
     `Sessions this week: ${thisWeekSessions.length > 0 ? JSON.stringify(thisWeekSessions) : 'none yet'}`,
+    `Weekly miss snapshot: ${weeklyMiss ? `week ${weeklyMiss.weekNumber} — ${weeklyMiss.loggedCount}/${weeklyMiss.scheduledCount} logged, ${weeklyMiss.missedCount} short${weeklyMiss.isCheckDay ? ' (Sunday: week is closing)' : ''}` : 'n/a'}`,
     `Last session data: ${lastSessionData ? JSON.stringify(lastSessionData) : 'none'}`,
     `Plateau flags: ${plateauFlags.length > 0 ? JSON.stringify(plateauFlags) : 'none'}`,
     `Missed sessions (last 28 days): ${missedSessionCount}${missedSessionDetails.length > 0 ? ' — ' + JSON.stringify(missedSessionDetails) : ''}`,
