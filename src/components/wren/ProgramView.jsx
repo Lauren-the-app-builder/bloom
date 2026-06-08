@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronRight, Sparkles } from 'lucide-react';
 import { c, comboLabel } from './tokens';
-import { getActiveProgram, setsForExercise, getSessions, load } from '../../lib/storage';
+import { getActiveProgram, setsForExercise, getSessions, load, isDeloadWeek } from '../../lib/storage';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 
 const MESO_LABELS = [
@@ -256,8 +256,9 @@ export default function ProgramView() {
               <div style={{ marginTop: 6 }}>
                 {weeks.map((wk, wi) => {
                   const wNum = wk.week_number || mi * 4 + wi + 1;
-                  // Deload is fixed by week number (4, 8, 12), not data.
-                  const isDeloadWk = wNum > 0 && wNum % 4 === 0;
+                  // Deload is opt-in — only weeks Lauren has confirmed
+                  // with Wren are marked. No more automatic 4/8/12 rule.
+                  const isDeloadWk = isDeloadWeek(wNum);
                   const status = isDeloadWk ? 'deload' : weekStatus(wNum, currentWeek);
                   const st = STATUS_STYLES[status];
                   const isExpanded = expandedWeek === wNum;

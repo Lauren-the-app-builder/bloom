@@ -1,6 +1,6 @@
 // Pure utility functions for the Wren coaching system.
 
-import { load } from '../../lib/storage';
+import { load, isDeloadWeek, getDeloadWeeks } from '../../lib/storage';
 import { comboKey, comboLabel } from './tokens';
 
 // ---------- Plateau detection ----------
@@ -128,8 +128,9 @@ export function getCurrentWeekAndMesocycle(rawProgram) {
     week: weekNum,
     mesocycle: Math.floor(clamped / 4) + 1,
     phase: 'normal',
-    // Deload weeks are 4, 8, 12 — derived from week number, not data.
-    isDeload: weekNum > 0 && weekNum % 4 === 0,
+    // Deload is opt-in now — only true for weeks Lauren has confirmed
+    // with Wren (stored via addDeloadWeek).
+    isDeload: isDeloadWeek(weekNum),
     hasStarted: now >= startDate,
     startDate,
   };
@@ -150,6 +151,8 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
   // Weekly miss check — forced so Wren sees this any day, not just Sundays.
   // She uses it to know how the current week is tracking.
   const weeklyMiss = computeWeeklyMissesForProgram(program, sessions, { force: true });
+  // Confirmed deload weeks — Lauren has explicitly agreed to these.
+  const deloadWeeks = getDeloadWeeks();
 
   // Figure out this week's session status.
   const startOfWeek = (() => {
@@ -215,6 +218,7 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
     missedSessionCount: recentMisses.length,
     missedSessionDetails: recentMisses,
     weeklyMiss,
+    deloadWeeks,
     thisWeekSessions: thisWeekSessions.map(s => s.workoutName),
     lastSessionData: lastSession ? {
       name: lastSession.workoutName,

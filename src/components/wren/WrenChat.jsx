@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Sparkles, ChevronRight } from 'lucide-react';
 import { c } from './tokens';
-import { getWrenMessages, addWrenMessage, resetWrenChat, getActiveProgram, saveProgram, setProgramSchedule, editProgramSession, getSessions, getMissedSessions, addMissedSession } from '../../lib/storage';
+import { getWrenMessages, addWrenMessage, resetWrenChat, getActiveProgram, saveProgram, setProgramSchedule, editProgramSession, getSessions, getMissedSessions, addMissedSession, addDeloadWeek, removeDeloadWeek } from '../../lib/storage';
 
 // If the gap since Lauren's last interaction with Wren exceeds this, the
 // chat starts fresh on next open — Wren has no memory of the old thread,
@@ -166,6 +166,15 @@ DO NOT generate the program yet. Just introduce yourself and ask if she has anyt
               if (a?.session_label && a?.day) dayByLabel[String(a.session_label).trim()] = String(a.day).trim();
             }
             setProgramSchedule(dayByLabel);
+          }
+          if (action.type === 'apply_deload' && Number.isFinite(Number(action.week_number))) {
+            // Lauren must have already said yes in chat — the system prompt
+            // requires Wren to confirm verbally before emitting this. The
+            // client just persists the confirmed deload week.
+            addDeloadWeek(Number(action.week_number));
+          }
+          if (action.type === 'remove_deload' && Number.isFinite(Number(action.week_number))) {
+            removeDeloadWeek(Number(action.week_number));
           }
           if (action.type === 'edit_workout' && action.session_label) {
             editProgramSession({

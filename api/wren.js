@@ -41,6 +41,7 @@ export default async function handler(req, res) {
     workoutNames = [],
     unit = 'kg',
     weeklyMiss = null,
+    deloadWeeks = [],
   } = context;
 
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -72,7 +73,7 @@ Progression model:
 - Use double progression: once Lauren hits the top of the rep range for all sets at a given weight, increase the weight by the smallest sensible increment (typically 2.5kg lower body, 1.25kg upper body).
 - For individual sets: aim for +1 rep each session until all sets hit the top of the range.
 - Flag a plateau if the same weight is logged for the same movement for 2 or more weeks with no rep improvement. Suggest a deload, eccentric focus, or exercise variation.
-- Deload weeks: reduce volume by ~40% and weight by ~10%. Tell Lauren why before it happens.
+- Deload weeks: NEVER automatic. The old every-4th-week rule is gone. You ONLY flag a deload when Lauren's recent data warrants one — multiple plateaus in plateauFlags, a clear drop in working reps across a movement, accumulated missed sessions, or self-reported high fatigue/poor sleep over multiple sessions. When you see those signals, open the conversation: explain what you're seeing and ask if she wants to deload the upcoming week. Wait for an explicit yes. ONLY then call bloom_actions with apply_deload and the week_number (1-12). Never mark a week as deload without that verbal confirmation. If she says no, drop it and revisit later. The confirmed deload weeks Lauren has already agreed to are listed in deloadWeeks in the context block.
 - For bands-loaded exercises (e.g. assisted pull-ups): each set logs a band combo as a list of color names from { green, blue, yellow, red, purple } with repeats allowed (e.g. ['green','green']). The colors carry NO inherent ranking — green is not "heavier" than blue. The signal is rep count at a given combo. RULE: when Lauren hits 10 reps at a combo, that is the cue for her to pick a new combo (typically fewer or different bands). She picks it herself; don't prescribe one. NEVER read a change in combo (fewer bands, different colors, dropping a band) as regression — combo changes are exploratory progression. The only thing that signals progress in either direction is rep count per combo over time, available in context as bandsBestReps and bandsSummary.
 
 Missed session rules (enforce these strictly):
@@ -167,6 +168,7 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
     `Current week: ${currentWeek ?? '?'} of 12`,
     `Mesocycle: ${currentMesocycle ?? '?'} (${phase ?? '?'})`,
     `Is deload week: ${isDeload ? 'yes' : 'no'}`,
+    `Confirmed deload weeks: ${deloadWeeks.length ? deloadWeeks.join(', ') : 'none yet'}`,
     `Lauren's current lift bests: ${liftBestLines || 'no data yet'}`,
     `Sessions this week: ${thisWeekSessions.length > 0 ? JSON.stringify(thisWeekSessions) : 'none yet'}`,
     `Weekly miss snapshot: ${weeklyMiss ? `week ${weeklyMiss.weekNumber} — ${weeklyMiss.loggedCount}/${weeklyMiss.scheduledCount} logged, ${weeklyMiss.missedCount} short${weeklyMiss.isCheckDay ? ' (Sunday: week is closing)' : ''}` : 'n/a'}`,
@@ -205,7 +207,7 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
             items: {
               type: 'object',
               properties: {
-                type: { type: 'string', description: 'Action type. Program/chat scope: generate_program, assign_punishment, flag_plateau, set_schedule, edit_workout. Live-workout scope (only valid when the user message says it is mid-workout): set_target_weight, set_target (rep target), set_rest, add_set, add_exercise, remove_exercise, reorder.' },
+                type: { type: 'string', description: 'Action type. Program/chat scope: generate_program, assign_punishment, flag_plateau, set_schedule, edit_workout, apply_deload, remove_deload. Live-workout scope (only valid when the user message says it is mid-workout): set_target_weight, set_target (rep target), set_rest, add_set, add_exercise, remove_exercise, reorder.' },
                 program: { type: 'object', description: 'For generate_program: the full program object with weeks array' },
                 description: { type: 'string', description: 'For assign_punishment: the punishment description' },
                 exercise: { type: 'string', description: 'For flag_plateau: the exercise name. For edit_workout: the exercise whose reps you are changing (pair with reps).' },
@@ -217,6 +219,7 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
                 remove_exercise: { type: 'string', description: 'For edit_workout: name of an exercise to remove from the session.' },
                 reps: { type: 'string', description: 'For edit_workout: a rep range like "8-10" — used with add_exercise (target for the new exercise) or with exercise (new target for an existing exercise). For live-workout set_target: the new top rep target (as a number string).' },
                 weight: { type: 'number', description: 'For live-workout set_target_weight or add_exercise: the working weight in the user\'s unit.' },
+                week_number: { type: 'number', description: 'For apply_deload or remove_deload: which program week (1-12) to mark as a deload or un-mark.' },
                 seconds: { type: 'number', description: 'For live-workout set_rest: rest time in seconds for this exercise.' },
                 sets: { type: 'number', description: 'For live-workout add_exercise: number of sets to add (default 3).' },
                 order: { type: 'array', items: { type: 'string' }, description: 'For live-workout reorder: list of exercise names in the desired new order.' },

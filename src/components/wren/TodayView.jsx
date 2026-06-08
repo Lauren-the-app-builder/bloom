@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, CalendarRange } from 'lucide-react';
 import { c } from './tokens';
-import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed } from '../../lib/storage';
+import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek } from '../../lib/storage';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Sunday'];
@@ -35,9 +35,9 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
   const rawProgram = getActiveProgram();
   const program = rawProgram?.program_json || rawProgram || null;
   const { week: currentWeek, hasStarted, startDate } = getCurrentWeekAndMesocycle(rawProgram);
-  // Compute deload directly from the week number — ignore whatever the
-  // (possibly wrong) program data says. Deload weeks are 4, 8, 12.
-  const isDeload = hasStarted && currentWeek > 0 && currentWeek % 4 === 0;
+  // Deload is opt-in — only true when Lauren has confirmed the current
+  // week as a deload (via Wren). No more automatic week-4/8/12 rule.
+  const isDeload = hasStarted && currentWeek > 0 && isDeloadWeek(currentWeek);
 
   // Deload weeks cut volume ~40% (≈60% of the sets, min 1) and load ~10%.
   const setsFor = (name) => setsForExercise(name, isDeload);

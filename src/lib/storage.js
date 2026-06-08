@@ -147,6 +147,37 @@ export function setsForExercise(name, isDeload) {
   return isDeload ? deloadSets(base) : base;
 }
 
+// ---------- Deload weeks ----------
+// Deload is no longer auto-assigned every 4th week — it now only takes
+// effect for weeks Lauren has explicitly confirmed with Wren. These
+// helpers manage the persisted list.
+export function getDeloadWeeks() {
+  const v = load('deloadWeeks', []);
+  return Array.isArray(v) ? v.map(n => Number(n)).filter(Number.isFinite) : [];
+}
+
+export function isDeloadWeek(weekNum) {
+  if (!Number.isFinite(weekNum) || weekNum <= 0) return false;
+  return getDeloadWeeks().includes(Number(weekNum));
+}
+
+export function addDeloadWeek(weekNum) {
+  const n = Number(weekNum);
+  if (!Number.isFinite(n) || n <= 0) return getDeloadWeeks();
+  const set = new Set(getDeloadWeeks());
+  set.add(n);
+  const next = [...set].sort((a, b) => a - b);
+  save('deloadWeeks', next);
+  return next;
+}
+
+export function removeDeloadWeek(weekNum) {
+  const n = Number(weekNum);
+  const next = getDeloadWeeks().filter(x => x !== n);
+  save('deloadWeeks', next);
+  return next;
+}
+
 function fixSession(sess) {
   if (!sess || !Array.isArray(sess.exercises)) return sess;
   return {
@@ -158,9 +189,9 @@ function fixSession(sess) {
   };
 }
 
-// Normalize a program: override exercise sets to canonical, fix is_deload so
-// only standard deload weeks (4, 8, 12) are marked. Converts object-shaped
-// sessions to array form for consistent consumption.
+// Normalize a program: override exercise sets to canonical. Deload weeks
+// are no longer pre-marked by week-number math — that flag now comes from
+// the user's confirmed deload list (see getDeloadWeeks / isDeloadWeek).
 function normalizeProgram(rawProgram) {
   if (!rawProgram) return rawProgram;
   const program = rawProgram.program_json || rawProgram;
@@ -172,7 +203,8 @@ function normalizeProgram(rawProgram) {
     const newWk = {
       ...wk,
       week_number: weekNum,
-      is_deload: weekNum > 0 && weekNum % 4 === 0,
+      // is_deload intentionally NOT auto-set; the UI consults
+      // isDeloadWeek() from the user's confirmed list instead.
     };
     if (Array.isArray(wk.sessions)) {
       newWk.sessions = wk.sessions.map(fixSession);
