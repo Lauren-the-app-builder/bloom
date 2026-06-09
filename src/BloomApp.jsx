@@ -1092,8 +1092,13 @@ function WorkoutPreview({ workout, onClose, onStart, onBackfill, onEdit, onExerc
                         </p>
                         {(() => {
                           const previewPerSet = setsAt.map(x => Math.min(Number(x.reps) + 1, targetReps || 99));
+                          // After a bump, start at the bottom of the rep
+                          // range. Only mention it when the range actually
+                          // has a bottom (single-number targets just go up).
+                          const bottomReps = workout.bottomTargets?.[exName];
+                          const startReps = bottomReps && targetReps && bottomReps < targetReps ? bottomReps : null;
                           const previewMsg = allHit
-                            ? `Go up ${unit === "kg" ? "2-5" : "5-10"}${unit} from ${workingW}${unit} ✨`
+                            ? `Go up ${unit === "kg" ? "2-5" : "5-10"}${unit} from ${workingW}${unit}${startReps ? ` — aim for ${startReps} reps` : ''} ✨`
                             : `Stay at ${workingW}${unit} — aim for ${previewPerSet.join(", ")} reps`;
                           return <p style={{ fontSize: 11, color: c.rosedeep, margin: "2px 0 0", fontWeight: 600 }}>{previewMsg}</p>;
                         })()}
@@ -2080,14 +2085,20 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
                     // Live override: if every set is done and every one hit
                     // the top of the rep range, tell her to go up next time.
                     const tReps = targets[ex.name];
+                    const bReps = workout.bottomTargets?.[ex.name];
                     const done = ex.rows.filter((r) => r.done && Number(r.reps) > 0);
                     if (tReps && done.length === ex.rows.length && done.length > 0 && done.every((r) => Number(r.reps) >= tReps)) {
                       const w = Math.max(...done.map((r) => Number(r.weight) || 0));
                       const isLowerName = /barbell|squat|deadlift|hip thrust|leg press|rdl/i.test(ex.name);
                       const nextW = w > 0 ? bumpWeight(w, unit, isLowerName) : null;
+                      // After a bump, the rep aim resets to the bottom of
+                      // the range — work it back up to tReps before the
+                      // next jump.
+                      const startReps = bReps && bReps < tReps ? bReps : null;
+                      const repTail = startReps ? ` Aim for ${startReps} reps to start.` : '';
                       return nextW
-                        ? `🎯 You hit ${tReps} on every set — go up to ${nextW}${unit} next time.`
-                        : `🎯 You hit ${tReps} on every set — go up next time.`;
+                        ? `🎯 You hit ${tReps} on every set — go up to ${nextW}${unit} next time.${repTail}`
+                        : `🎯 You hit ${tReps} on every set — go up next time.${repTail}`;
                     }
                     return exerciseGoals[ex.name];
                   })()}</p>

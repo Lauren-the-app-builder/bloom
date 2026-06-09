@@ -76,14 +76,22 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
     if (!session) return null;
     const exercises = session.exercises.map(e => e.name);
     const targets = {};
+    // Bottom of each exercise's rep range. After a weight bump the
+    // recommendation should be to start at the bottom and work up, so we
+    // pass this through alongside the top target.
+    const bottomTargets = {};
     const rests = {};
     const supersets = [];
     const setsConfig = {};
 
     for (const ex of session.exercises) {
       const repStr = String(ex.reps || '10');
-      const topRep = parseInt(repStr.split('-').pop()) || 10;
+      const parts = repStr.split('-');
+      const topRep = parseInt(parts[parts.length - 1]) || 10;
+      // For single-number rep targets ("10") the bottom equals the top.
+      const bottomRep = parts.length > 1 ? (parseInt(parts[0]) || topRep) : topRep;
       targets[ex.name] = topRep;
+      bottomTargets[ex.name] = bottomRep;
       // Always use the canonical set count for this exercise, regardless of
       // what the program JSON says. Wren's generated sets are often wrong.
       // On deload weeks this is reduced to cut volume.
@@ -103,6 +111,7 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
       name: `Session ${session.session_label}`,
       exercises,
       targets,
+      bottomTargets,
       rests,
       supersets,
       setsConfig,
