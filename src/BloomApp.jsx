@@ -1747,6 +1747,10 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
   };
 
   const [finishSummary, setFinishSummary] = useState(null);
+  // Post-workout feedback Lauren can leave for Wren on the done screen.
+  // mood is one of MOOD_OPTIONS below; notes is free text.
+  const [feedbackMood, setFeedbackMood] = useState(null);
+  const [feedbackNotes, setFeedbackNotes] = useState('');
   const finishWorkout = () => {
     // Save session to history before closing
     const exMap = {};
@@ -2370,8 +2374,71 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
             </div>
           </div>
 
+          {/* Post-session feedback — chips for feel/perf + a notes field.
+              Wren reads these on her next turn and can reference them
+              ('you mentioned X last session'). */}
+          <div style={{ width: "100%", background: c.white, border: `1px solid ${c.line}`, borderRadius: 16, padding: 16, marginBottom: 14 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: c.muted, margin: 0, letterSpacing: 0.5 }}>HOW DID THAT FEEL?</p>
+            <p style={{ fontSize: 11, color: c.muted, margin: "4px 0 10px", lineHeight: 1.5 }}>Wren will see this — it helps her coach you better next time.</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+              {[
+                { id: "easy", label: "Felt easy" },
+                { id: "solid", label: "Solid" },
+                { id: "tough", label: "Tough but good" },
+                { id: "drained", label: "Drained" },
+                { id: "off", label: "Felt off" },
+              ].map(opt => {
+                const active = feedbackMood === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    onClick={() => setFeedbackMood(active ? null : opt.id)}
+                    style={{
+                      padding: "7px 12px", borderRadius: 999, cursor: "pointer", fontFamily: "inherit",
+                      fontSize: 12, fontWeight: 600,
+                      border: `1px solid ${active ? c.rosedeep : c.line}`,
+                      background: active ? c.rosedeep : c.white,
+                      color: active ? "white" : c.charcoal,
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <textarea
+              value={feedbackNotes}
+              onChange={(e) => setFeedbackNotes(e.target.value)}
+              placeholder="Anything else? Sleep, soreness, what felt off… (optional)"
+              rows={2}
+              style={{
+                width: "100%", padding: "10px 12px", borderRadius: 12,
+                border: `1px solid ${c.line}`, background: c.cream,
+                fontSize: 13, fontFamily: "inherit", color: c.charcoal,
+                outline: "none", resize: "vertical", minHeight: 60,
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+
           <button
-            onClick={() => { setFinishSummary(null); onFinish(); }}
+            onClick={() => {
+              // Persist the feedback to the session record before closing
+              // so Wren can read it. Only writes if something was entered.
+              if ((feedbackMood || feedbackNotes.trim()) && finishSummary?.finishedAt) {
+                updateSession(finishSummary.finishedAt, {
+                  feedback: {
+                    mood: feedbackMood || null,
+                    notes: feedbackNotes.trim() || null,
+                    submittedAt: Date.now(),
+                  },
+                });
+              }
+              setFeedbackMood(null);
+              setFeedbackNotes('');
+              setFinishSummary(null);
+              onFinish();
+            }}
             style={{ width: "100%", background: c.charcoal, color: "white", border: "none", padding: 16, borderRadius: 16, fontSize: 15, fontWeight: 600, cursor: "pointer" }}
           >
             Done

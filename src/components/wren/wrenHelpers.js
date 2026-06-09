@@ -225,7 +225,18 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
       date: new Date(lastSession.finishedAt).toLocaleDateString(),
       exercises: lastSession.exercises,
       durationMin: Math.round((lastSession.durationSec || 0) / 60),
+      feedback: lastSession.feedback || null,
     } : null,
+    // Roll up Lauren's feedback from the last 10 sessions so Wren can
+    // notice patterns (e.g. "drained on every Friday session").
+    recentSessionFeedback: sorted.slice(0, 10)
+      .filter(s => s.feedback && (s.feedback.mood || s.feedback.notes))
+      .map(s => ({
+        name: s.workoutName,
+        date: new Date(s.finishedAt).toLocaleDateString(),
+        mood: s.feedback.mood || null,
+        notes: s.feedback.notes || null,
+      })),
     schedule,
     unit,
     workoutNames: myWorkouts.map(w => w.name),

@@ -25,6 +25,7 @@ export async function askWren(message, context = {}, midWorkout = false) {
     bandsSummary = {},
     weeklyMiss = null,
     deloadWeeks = [],
+    recentSessionFeedback = [],
   } = context;
 
   const res = await fetch(API, {
@@ -54,6 +55,7 @@ export async function askWren(message, context = {}, midWorkout = false) {
         bandsSummary,
         weeklyMiss,
         deloadWeeks,
+        recentSessionFeedback,
       },
       midWorkout,
     }),

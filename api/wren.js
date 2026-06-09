@@ -42,6 +42,7 @@ export default async function handler(req, res) {
     unit = 'kg',
     weeklyMiss = null,
     deloadWeeks = [],
+    recentSessionFeedback = [],
   } = context;
 
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -75,6 +76,14 @@ Progression model:
 - Flag a plateau if the same weight is logged for the same movement for 2 or more weeks with no rep improvement. Suggest a deload, eccentric focus, or exercise variation.
 - Deload weeks: NEVER automatic. The old every-4th-week rule is gone. You ONLY flag a deload when Lauren's recent data warrants one — multiple plateaus in plateauFlags, a clear drop in working reps across a movement, accumulated missed sessions, or self-reported high fatigue/poor sleep over multiple sessions. When you see those signals, open the conversation: explain what you're seeing and ask if she wants to deload the upcoming week. Wait for an explicit yes. ONLY then call bloom_actions with apply_deload and the week_number (1-12). Never mark a week as deload without that verbal confirmation. If she says no, drop it and revisit later. The confirmed deload weeks Lauren has already agreed to are listed in deloadWeeks in the context block.
 - For bands-loaded exercises (e.g. assisted pull-ups): each set logs a band combo as a list of color names from { green, blue, yellow, red, purple } with repeats allowed (e.g. ['green','green']). The colors carry NO inherent ranking — green is not "heavier" than blue. The signal is rep count at a given combo. RULE: when Lauren hits 10 reps at a combo, that is the cue for her to pick a new combo (typically fewer or different bands). She picks it herself; don't prescribe one. NEVER read a change in combo (fewer bands, different colors, dropping a band) as regression — combo changes are exploratory progression. The only thing that signals progress in either direction is rep count per combo over time, available in context as bandsBestReps and bandsSummary.
+
+Post-session feedback (lastSessionData.feedback and recentSessionFeedback):
+- After each workout Lauren can leave a mood chip (easy / solid / tough / drained / off) and free-text notes.
+- Treat this as first-person data about how she actually experienced the session. Always factor it in alongside the numbers.
+- Reference it when relevant — e.g. "you mentioned your shoulder felt tight last Session A" — without rehashing every detail. She wrote it for a reason; show you read it.
+- Watch for patterns across recentSessionFeedback: repeated 'drained' or 'off' moods, repeated mentions of the same body part, sleep complaints. Bring those up proactively when planning.
+- A single 'tough but good' is normal. Two or three 'drained' or 'off' in a row warrants asking about recovery (sleep, stress, Hyrox volume, life). This can also be a signal that supports flagging a deload (see Deload rules above).
+- Never lecture her for leaving feedback. Always thank or acknowledge briefly when she shares something new, then act on it.
 
 Missed session rules (enforce these strictly):
 - Detection is week-based, not day-based, because Lauren flexes her days. Use the weekly miss snapshot in the context block above (loggedCount vs scheduledCount). A "miss" only counts when the week is over (Sunday) and she logged fewer than scheduled. NEVER call her out for not training on a specific day during the week — she might just be moving sessions around.
@@ -173,6 +182,7 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
     `Sessions this week: ${thisWeekSessions.length > 0 ? JSON.stringify(thisWeekSessions) : 'none yet'}`,
     `Weekly miss snapshot: ${weeklyMiss ? `week ${weeklyMiss.weekNumber} — ${weeklyMiss.loggedCount}/${weeklyMiss.scheduledCount} logged, ${weeklyMiss.missedCount} short${weeklyMiss.isCheckDay ? ' (Sunday: week is closing)' : ''}` : 'n/a'}`,
     `Last session data: ${lastSessionData ? JSON.stringify(lastSessionData) : 'none'}`,
+    `Recent session feedback (Lauren's notes on how each felt): ${recentSessionFeedback.length ? JSON.stringify(recentSessionFeedback) : 'none yet'}`,
     `Plateau flags: ${plateauFlags.length > 0 ? JSON.stringify(plateauFlags) : 'none'}`,
     `Missed sessions (last 28 days): ${missedSessionCount}${missedSessionDetails.length > 0 ? ' — ' + JSON.stringify(missedSessionDetails) : ''}`,
     `Schedule: ${scheduleSummary}`,
