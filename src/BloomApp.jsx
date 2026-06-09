@@ -1751,6 +1751,11 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
   // mood is one of MOOD_OPTIONS below; notes is free text.
   const [feedbackMood, setFeedbackMood] = useState(null);
   const [feedbackNotes, setFeedbackNotes] = useState('');
+  // Per-exercise technique adjustments — { [exerciseName]: 'Slowed eccentric to 3s' }.
+  // Wren reads these so an intentional weight/rep drop doesn't get flagged
+  // as regression.
+  const [adjustmentsOpen, setAdjustmentsOpen] = useState(false);
+  const [exerciseAdjustments, setExerciseAdjustments] = useState({});
   const finishWorkout = () => {
     // Save session to history before closing
     const exMap = {};
@@ -2374,6 +2379,57 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
             </div>
           </div>
 
+          {/* Technique adjustments — per-exercise notes Lauren can leave so
+              Wren doesn't read intentional weight/rep drops as regression
+              (slower tempo, deeper ROM, pauses, strict form, etc.).
+              Collapsed by default; tap to reveal an input row per
+              exercise she logged today. */}
+          <div style={{ width: "100%", background: c.white, border: `1px solid ${c.line}`, borderRadius: 16, padding: 16, marginBottom: 14 }}>
+            <button
+              onClick={() => setAdjustmentsOpen(o => !o)}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                width: "100%", background: "none", border: "none", padding: 0,
+                cursor: "pointer", fontFamily: "inherit", color: c.charcoal, textAlign: "left",
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: c.muted, margin: 0, letterSpacing: 0.5 }}>
+                  DID YOU CHANGE ANYTHING?
+                </p>
+                <p style={{ fontSize: 11, color: c.muted, margin: "4px 0 0", lineHeight: 1.5 }}>
+                  Note tempo, range, or technique tweaks so Wren doesn't read a lighter set as a regression.
+                </p>
+              </div>
+              <ChevronRight
+                size={16} color={c.muted}
+                style={{ transform: adjustmentsOpen ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s ease", flexShrink: 0, marginLeft: 10 }}
+              />
+            </button>
+            {adjustmentsOpen && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+                {(finishSummary.exNames || []).map(name => (
+                  <div key={name} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: c.charcoal, flex: "0 0 35%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {name}
+                    </span>
+                    <input
+                      type="text"
+                      value={exerciseAdjustments[name] || ''}
+                      onChange={(e) => setExerciseAdjustments(prev => ({ ...prev, [name]: e.target.value }))}
+                      placeholder="e.g. 3s eccentric, deeper ROM"
+                      style={{
+                        flex: 1, padding: "8px 12px", borderRadius: 10,
+                        border: `1px solid ${c.line}`, background: c.cream,
+                        fontSize: 12, fontFamily: "inherit", color: c.charcoal, outline: "none",
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Post-session feedback — chips for feel/perf + a notes field.
               Wren reads these on her next turn and can reference them
               ('you mentioned X last session'). */}
@@ -2423,19 +2479,32 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
 
           <button
             onClick={() => {
-              // Persist the feedback to the session record before closing
-              // so Wren can read it. Only writes if something was entered.
-              if ((feedbackMood || feedbackNotes.trim()) && finishSummary?.finishedAt) {
-                updateSession(finishSummary.finishedAt, {
-                  feedback: {
-                    mood: feedbackMood || null,
-                    notes: feedbackNotes.trim() || null,
-                    submittedAt: Date.now(),
-                  },
-                });
+              // Persist any feedback + adjustments to the session record
+              // before closing so Wren can read them next turn. Only the
+              // entries that actually contain something get written.
+              const cleanedAdjustments = Object.fromEntries(
+                Object.entries(exerciseAdjustments)
+                  .map(([name, note]) => [name, (note || '').trim()])
+                  .filter(([, note]) => note)
+              );
+              const patch = {};
+              if (feedbackMood || feedbackNotes.trim()) {
+                patch.feedback = {
+                  mood: feedbackMood || null,
+                  notes: feedbackNotes.trim() || null,
+                  submittedAt: Date.now(),
+                };
+              }
+              if (Object.keys(cleanedAdjustments).length) {
+                patch.exerciseAdjustments = cleanedAdjustments;
+              }
+              if (Object.keys(patch).length && finishSummary?.finishedAt) {
+                updateSession(finishSummary.finishedAt, patch);
               }
               setFeedbackMood(null);
               setFeedbackNotes('');
+              setExerciseAdjustments({});
+              setAdjustmentsOpen(false);
               setFinishSummary(null);
               onFinish();
             }}

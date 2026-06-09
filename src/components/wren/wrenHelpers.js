@@ -237,6 +237,16 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
         mood: s.feedback.mood || null,
         notes: s.feedback.notes || null,
       })),
+    // Per-exercise technique adjustments Lauren has flagged in the last
+    // ~12 sessions. Wren must NOT read drops on these exercises as
+    // regression while a recent adjustment is on file.
+    recentExerciseAdjustments: sorted.slice(0, 12)
+      .filter(s => s.exerciseAdjustments && Object.keys(s.exerciseAdjustments).length)
+      .map(s => ({
+        date: new Date(s.finishedAt).toLocaleDateString(),
+        workoutName: s.workoutName,
+        changes: s.exerciseAdjustments, // { [exerciseName]: 'Slowed eccentric to 3s' }
+      })),
     schedule,
     unit,
     workoutNames: myWorkouts.map(w => w.name),
