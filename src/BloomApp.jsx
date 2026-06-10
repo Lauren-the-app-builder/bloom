@@ -371,6 +371,7 @@ export default function BloomApp() {
   const [showExport, setShowExport] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showRestTimer, setShowRestTimer] = useState(false);
+  const [showWrenMemory, setShowWrenMemory] = useState(false);
   const [showExProgress, setShowExProgress] = useState(null); // exercise name or null
   const WREN_GREETING = { from: "coach", text: "Hi Lauren! I'm Wren 🌙 — your coach. I can see your workouts, PRs, schedule, and history. Try asking 'what should I do today?' or 'am I plateauing on hip thrust?'" };
   const [chatHistory, setChatHistory] = useLocalState("chatHistory", []); // [{id, title, createdAt, updatedAt, messages}]
@@ -550,6 +551,7 @@ export default function BloomApp() {
             onClose={() => setShowSettings(false)}
             onExport={() => { setShowSettings(false); setShowExport(true); }}
             onOpenRestTimer={() => { setShowSettings(false); setShowRestTimer(true); }}
+            onOpenWrenMemory={() => { setShowSettings(false); setShowWrenMemory(true); }}
             unit={unit}
             setUnit={setUnit}
             todayBackground={todayBackground}
@@ -558,6 +560,8 @@ export default function BloomApp() {
         )}
 
         {showRestTimer && <RestTimerScreen onBack={() => setShowRestTimer(false)} />}
+
+        {showWrenMemory && <WrenMemoryScreen onBack={() => setShowWrenMemory(false)} />}
 
         {showExProgress && (
           <ExerciseProgressView
@@ -3194,7 +3198,7 @@ function RestTimerScreen({ onBack }) {
   );
 }
 
-function SettingsModal({ onClose, onExport, onOpenRestTimer, unit, setUnit, todayBackground = "sunset", setTodayBackground }) {
+function SettingsModal({ onClose, onExport, onOpenRestTimer, onOpenWrenMemory, unit, setUnit, todayBackground = "sunset", setTodayBackground }) {
   const btn = { width: "100%", background: c.white, border: `1px solid ${c.line}`, borderRadius: 14, padding: 14, fontSize: 13, fontWeight: 600, cursor: "pointer", color: c.charcoal, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit" };
   // Background options for the Today screen. Add new entries here to make
   // them selectable; the file must live in /public so it survives builds.
@@ -3267,21 +3271,14 @@ function SettingsModal({ onClose, onExport, onOpenRestTimer, unit, setUnit, toda
           </div>
         )}
 
-        {/* What Wren remembers — long-term memory facts. Lauren can prune
-            anything that's wrong or no longer relevant. */}
-        <WrenMemorySection />
-
-        {/* Reset Wren */}
-        <button onClick={() => {
-          if (confirm("Reset Wren? This clears your chat history and program. Wren will start onboarding fresh.")) {
-            localStorage.removeItem('bloom:wrenChat');
-            localStorage.removeItem('bloom:wrenProgram');
-            localStorage.removeItem('bloom:wrenMissedSessions');
-            window.location.reload();
-          }
-        }} style={{ ...btn, marginBottom: 10, color: c.rosedeep }}>
-          Reset Wren
-        </button>
+        {/* What Wren remembers — opens its own screen so Lauren can review
+            and prune the long-term memory store. */}
+        {onOpenWrenMemory && (
+          <button onClick={onOpenWrenMemory} style={{ ...btn, marginBottom: 10, justifyContent: "space-between" }}>
+            <span>Wren memory</span>
+            <ChevronRight size={16} color={c.muted} />
+          </button>
+        )}
 
         {/* Export */}
         <button onClick={onExport} style={{ ...btn, marginBottom: 10 }}>
@@ -3300,53 +3297,118 @@ function SettingsModal({ onClose, onExport, onOpenRestTimer, unit, setUnit, toda
 }
 
 // ---------- EXPORT DATA MODAL (temporary, for migration) ----------
-// Wren's long-term memory — shows what she's saved about Lauren with
-// tap-to-forget on each and a 'Forget everything' clear-all. bump forces
-// a re-read from storage after an edit.
-function WrenMemorySection() {
+// Wren's long-term memory — full-screen view that shows everything she's
+// saved about Lauren, with tap-to-forget per fact and a Forget everything
+// button at the bottom. Patterns after RestTimerScreen.
+function WrenMemoryScreen({ onBack }) {
   const [bump, setBump] = useState(0);
   const memory = useMemo(() => getWrenNotes(), [bump]);
   return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: c.muted, letterSpacing: 0.5, textTransform: "uppercase", margin: "4px 4px 8px" }}>
-        What Wren remembers
+    <div style={{
+      position: "fixed", inset: 0, background: c.cream, zIndex: 300,
+      display: "flex", flexDirection: "column",
+      maxWidth: 430, margin: "0 auto",
+    }}>
+      {/* Top bar */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10,
+        padding: "16px 16px 12px",
+        borderBottom: `1px solid ${c.line}`,
+        flexShrink: 0,
+      }}>
+        <button
+          onClick={onBack}
+          style={{
+            width: 32, height: 32, borderRadius: "50%",
+            background: c.white, border: `1px solid ${c.line}`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer", flexShrink: 0,
+          }}
+        >
+          <ChevronRight size={16} color={c.charcoal} style={{ transform: "rotate(180deg)" }} />
+        </button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: c.charcoal, letterSpacing: -0.3 }}>Wren memory</div>
+          <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>
+            What she's chosen to remember about you
+          </div>
+        </div>
       </div>
-      {memory.length === 0 ? (
-        <div style={{ background: c.white, border: `1px solid ${c.line}`, borderRadius: 14, padding: 14, fontSize: 12, color: c.muted, lineHeight: 1.45 }}>
-          Nothing saved yet. Wren will add facts here as she gets to know you.
-        </div>
-      ) : (
-        <div style={{ background: c.white, border: `1px solid ${c.line}`, borderRadius: 14, padding: 8, display: "flex", flexDirection: "column", gap: 4 }}>
-          {memory.map((n) => (
-            <div key={n.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 10px", borderRadius: 10 }}>
-              <span style={{ fontSize: 12, color: c.charcoal, lineHeight: 1.45, flex: 1, minWidth: 0, wordBreak: "break-word" }}>
-                {n.text}
-              </span>
-              <button
-                onClick={() => {
-                  if (!confirm(`Forget: "${n.text}"?`)) return;
-                  removeWrenNote(n.id);
-                  setBump(b => b + 1);
-                }}
-                title="Forget this"
-                style={{ background: "none", border: "none", color: c.muted, cursor: "pointer", padding: 4, lineHeight: 1, flexShrink: 0, fontFamily: "inherit" }}
-              >
-                <X size={14} />
-              </button>
+
+      {/* Body */}
+      <div style={{
+        flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch",
+        padding: "16px 16px calc(28px + env(safe-area-inset-bottom)) 16px",
+      }}>
+        {memory.length === 0 ? (
+          <div style={{
+            background: c.white, border: `1px solid ${c.line}`, borderRadius: 18,
+            padding: 22, fontSize: 13, color: c.muted, lineHeight: 1.55,
+            textAlign: "center",
+          }}>
+            <Sparkles size={20} color={c.muted} style={{ marginBottom: 8 }} />
+            <div style={{ fontWeight: 600, color: c.charcoal, marginBottom: 4 }}>
+              Nothing saved yet
             </div>
-          ))}
-          <button
-            onClick={() => {
-              if (!confirm("Forget everything Wren has remembered? This can't be undone.")) return;
-              clearWrenNotes();
-              setBump(b => b + 1);
-            }}
-            style={{ width: "100%", marginTop: 6, padding: "8px 0", borderRadius: 10, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600, border: `1px solid ${c.line}`, background: c.white, color: c.rosedeep }}
-          >
-            Forget everything
-          </button>
-        </div>
-      )}
+            <div>
+              Wren will add durable facts here as she gets to know you — preferences, recurring issues, life context. You can forget any of them anytime.
+            </div>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {memory.map((n) => (
+                <div key={n.id} style={{
+                  display: "flex", alignItems: "flex-start", gap: 10,
+                  padding: "12px 14px", borderRadius: 14,
+                  background: c.white, border: `1px solid ${c.line}`,
+                }}>
+                  <Sparkles size={14} color={c.rosedeep} style={{ flexShrink: 0, marginTop: 2 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 13, color: c.charcoal, margin: 0, lineHeight: 1.5, wordBreak: "break-word" }}>
+                      {n.text}
+                    </p>
+                    <p style={{ fontSize: 10, color: c.muted, margin: "4px 0 0", letterSpacing: 0.3 }}>
+                      {n.source === "lauren" ? "Saved by you" : "Saved by Wren"}
+                      {n.createdAt ? ` · ${new Date(n.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (!confirm(`Forget: "${n.text}"?`)) return;
+                      removeWrenNote(n.id);
+                      setBump(b => b + 1);
+                    }}
+                    title="Forget this"
+                    style={{
+                      background: "none", border: "none", color: c.muted,
+                      cursor: "pointer", padding: 4, lineHeight: 1, flexShrink: 0,
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => {
+                if (!confirm("Forget everything Wren has remembered? This can't be undone.")) return;
+                clearWrenNotes();
+                setBump(b => b + 1);
+              }}
+              style={{
+                width: "100%", marginTop: 20, padding: "12px 0",
+                borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
+                fontSize: 13, fontWeight: 700,
+                border: `1px solid ${c.line}`, background: c.white, color: c.rosedeep,
+              }}
+            >
+              Forget everything
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
