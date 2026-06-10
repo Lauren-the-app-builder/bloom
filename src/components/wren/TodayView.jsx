@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, CalendarRange } from 'lucide-react';
 import { c } from './tokens';
-import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession } from '../../lib/storage';
+import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage } from '../../lib/storage';
+import { computeActiveNudge, markTriggerSeen } from './wrenTriggers';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Sunday'];
@@ -136,6 +137,20 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
     ).length;
   })();
 
+  // Active Wren-initiated nudge, if any. We bump nudgeBump after dismiss
+  // to recompute (the underlying triggers respect a per-key seen-set).
+  const [nudgeBump, setNudgeBump] = useState(0);
+  void nudgeBump;
+  const activeNudge = (() => {
+    if (!program) return null;
+    return computeActiveNudge({
+      program: rawProgram,
+      sessions: getSessions(),
+      myWorkouts: [],
+      missedSessions: [],
+    });
+  })();
+
   // Which session labels (A/B/C) have been completed this program week.
   const doneLabels = (() => {
     const set = new Set();
@@ -259,6 +274,83 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
           padding so the New Week card sits below Lauren's head, not
           across it. */}
       {background === 'lauren' && <div style={{ height: 220 }} />}
+
+      {/* Wren-initiated nudge — shown when a trigger fires (Sunday with no
+          next-week plan, week short, plateau, drained run). Tapping
+          posts Wren's message into the chat and jumps to the coach tab;
+          dismissing marks the key seen so it won't keep re-appearing. */}
+      {activeNudge && (
+        <div style={{
+          borderRadius: 22, padding: 16, marginBottom: 4,
+          background: `linear-gradient(135deg, ${c.rosedeep} 0%, ${c.rose} 100%)`,
+          color: 'white', position: 'relative',
+          boxShadow: '0 8px 24px rgba(201,122,174,0.30)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <Sparkles size={14} color="white" />
+            <span style={{
+              fontSize: 10, fontWeight: 800, letterSpacing: 1.2,
+              textTransform: 'uppercase', opacity: 0.95,
+              textShadow: '0 1px 4px rgba(80,40,90,0.3)',
+            }}>
+              Wren says
+            </span>
+          </div>
+          <div style={{
+            fontSize: 14, fontWeight: 700, marginBottom: 4,
+            textShadow: '0 1px 4px rgba(80,40,90,0.25)',
+          }}>
+            {activeNudge.title}
+          </div>
+          <div style={{
+            fontSize: 12, lineHeight: 1.5, opacity: 0.95,
+            textShadow: '0 1px 3px rgba(80,40,90,0.25)',
+            marginBottom: 12,
+          }}>
+            {activeNudge.message}
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => {
+                // Post Wren's message into the chat as an assistant turn,
+                // mark this trigger seen so it doesn't re-fire, then jump
+                // to the coach tab.
+                addWrenMessage({ role: 'assistant', content: activeNudge.message, proactive: true });
+                markTriggerSeen(activeNudge.key);
+                setNudgeBump(b => b + 1);
+                if (onViewProgram) {
+                  // We don't have a direct onOpenChat callback; reuse the
+                  // ask-Wren path which the parent already wires to the
+                  // coach tab in chat mode.
+                  onAskWren && onAskWren();
+                } else if (onAskWren) {
+                  onAskWren();
+                }
+              }}
+              style={{
+                flex: 1, padding: '9px 0', borderRadius: 999, border: 'none', cursor: 'pointer',
+                background: 'white', color: c.rosedeep,
+                fontSize: 12, fontWeight: 700, fontFamily: 'inherit',
+              }}
+            >
+              Open chat
+            </button>
+            <button
+              onClick={() => {
+                markTriggerSeen(activeNudge.key);
+                setNudgeBump(b => b + 1);
+              }}
+              style={{
+                padding: '9px 14px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.6)',
+                background: 'transparent', color: 'white', cursor: 'pointer',
+                fontSize: 12, fontWeight: 600, fontFamily: 'inherit',
+              }}
+            >
+              Not now
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* This week's schedule — always visible, editable, marks done sessions.
           Once all of this week's sessions are logged (and next week isn't

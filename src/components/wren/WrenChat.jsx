@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Sparkles, ChevronRight } from 'lucide-react';
 import { c } from './tokens';
-import { getWrenMessages, addWrenMessage, resetWrenChat, getActiveProgram, saveProgram, setProgramSchedule, editProgramSession, getSessions, getMissedSessions, addMissedSession, addDeloadWeek, removeDeloadWeek } from '../../lib/storage';
+import { getWrenMessages, addWrenMessage, resetWrenChat, getActiveProgram, saveProgram, setProgramSchedule, editProgramSession, getSessions, getMissedSessions, addMissedSession, addDeloadWeek, removeDeloadWeek, addWrenNote, getWrenNotes, removeWrenNote } from '../../lib/storage';
 
 // If the gap since Lauren's last interaction with Wren exceeds this, the
 // chat starts fresh on next open — Wren has no memory of the old thread,
@@ -104,7 +104,7 @@ export default function WrenChat({ schedule, myWorkouts, unit, sessionsBump, onS
 You already know the following from her training history (DO NOT ask about these again, but DO keep them in mind):
 ${liftLines ? `Current bests: ${liftLines}` : 'No previous lift data yet.'}
 Goal: lean, muscular physique. Big focus on shoulders. Wants her first unassisted pull-up this year.
-Structure: 3x full body per week, days flex. Hyrox on Saturdays (awareness only).
+Structure: 3x full body per week, days flex. Saturdays are rest by default.
 Program starts: Monday May 25th.
 Exercises to AVOID: squats, Bulgarian split squats, deadlifts, lunges. Hip thrusts OK but no single-leg.
 Assisted pull-ups: logs as a band-color combo (any of green/blue/yellow/red/purple, stackable). 10 reps at a combo is the cue for her to pick a new combo — she chooses it, you don't prescribe one. Combo changes are not regressions.
@@ -175,6 +175,14 @@ DO NOT generate the program yet. Just introduce yourself and ask if she has anyt
           }
           if (action.type === 'remove_deload' && Number.isFinite(Number(action.week_number))) {
             removeDeloadWeek(Number(action.week_number));
+          }
+          if (action.type === 'remember' && action.fact) {
+            addWrenNote({ text: action.fact, source: 'wren' });
+          }
+          if (action.type === 'forget_note' && action.fact) {
+            const target = (action.fact || '').trim().toLowerCase();
+            const match = getWrenNotes().find(n => String(n.text || '').toLowerCase() === target);
+            if (match) removeWrenNote(match.id);
           }
           if (action.type === 'edit_workout' && action.session_label) {
             editProgramSession({

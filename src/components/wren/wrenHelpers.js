@@ -1,6 +1,6 @@
 // Pure utility functions for the Wren coaching system.
 
-import { load, isDeloadWeek, getDeloadWeeks } from '../../lib/storage';
+import { load, isDeloadWeek, getDeloadWeeks, getWrenNotes } from '../../lib/storage';
 import { comboKey, comboLabel } from './tokens';
 
 // ---------- Plateau detection ----------
@@ -153,6 +153,8 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
   const weeklyMiss = computeWeeklyMissesForProgram(program, sessions, { force: true });
   // Confirmed deload weeks — Lauren has explicitly agreed to these.
   const deloadWeeks = getDeloadWeeks();
+  // Long-term memory — facts Wren has saved with the remember action.
+  const wrenNotes = getWrenNotes();
 
   // Figure out this week's session status.
   const startOfWeek = (() => {
@@ -219,6 +221,7 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
     missedSessionDetails: recentMisses,
     weeklyMiss,
     deloadWeeks,
+    wrenNotes,
     thisWeekSessions: thisWeekSessions.map(s => s.workoutName),
     lastSessionData: lastSession ? {
       name: lastSession.workoutName,

@@ -88,7 +88,7 @@ import {
   Link2,
   Link2Off,
 } from "lucide-react";
-import { useLocalState, recordSession, getSessions, getLastSession, updateSession, deleteSession, load, save, getActiveProgram, getMissedSessions, ensureSessionAOrder, ensureSessionBPulldown, ensureSessionCLegCurl } from "./lib/storage";
+import { useLocalState, recordSession, getSessions, getLastSession, updateSession, deleteSession, load, save, getActiveProgram, getMissedSessions, ensureSessionAOrder, ensureSessionBPulldown, ensureSessionCLegCurl, getWrenNotes, removeWrenNote, clearWrenNotes } from "./lib/storage";
 import { deleteSessionRemote } from "./lib/sync";
 import { supabase, isSupabaseConfigured } from "./lib/supabase";
 import { subscribeToPush, scheduleRestPush, cancelRestPush } from "./lib/push";
@@ -3267,6 +3267,10 @@ function SettingsModal({ onClose, onExport, onOpenRestTimer, unit, setUnit, toda
           </div>
         )}
 
+        {/* What Wren remembers — long-term memory facts. Lauren can prune
+            anything that's wrong or no longer relevant. */}
+        <WrenMemorySection />
+
         {/* Reset Wren */}
         <button onClick={() => {
           if (confirm("Reset Wren? This clears your chat history and program. Wren will start onboarding fresh.")) {
@@ -3296,6 +3300,57 @@ function SettingsModal({ onClose, onExport, onOpenRestTimer, unit, setUnit, toda
 }
 
 // ---------- EXPORT DATA MODAL (temporary, for migration) ----------
+// Wren's long-term memory — shows what she's saved about Lauren with
+// tap-to-forget on each and a 'Forget everything' clear-all. bump forces
+// a re-read from storage after an edit.
+function WrenMemorySection() {
+  const [bump, setBump] = useState(0);
+  const memory = useMemo(() => getWrenNotes(), [bump]);
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: c.muted, letterSpacing: 0.5, textTransform: "uppercase", margin: "4px 4px 8px" }}>
+        What Wren remembers
+      </div>
+      {memory.length === 0 ? (
+        <div style={{ background: c.white, border: `1px solid ${c.line}`, borderRadius: 14, padding: 14, fontSize: 12, color: c.muted, lineHeight: 1.45 }}>
+          Nothing saved yet. Wren will add facts here as she gets to know you.
+        </div>
+      ) : (
+        <div style={{ background: c.white, border: `1px solid ${c.line}`, borderRadius: 14, padding: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+          {memory.map((n) => (
+            <div key={n.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 10px", borderRadius: 10 }}>
+              <span style={{ fontSize: 12, color: c.charcoal, lineHeight: 1.45, flex: 1, minWidth: 0, wordBreak: "break-word" }}>
+                {n.text}
+              </span>
+              <button
+                onClick={() => {
+                  if (!confirm(`Forget: "${n.text}"?`)) return;
+                  removeWrenNote(n.id);
+                  setBump(b => b + 1);
+                }}
+                title="Forget this"
+                style={{ background: "none", border: "none", color: c.muted, cursor: "pointer", padding: 4, lineHeight: 1, flexShrink: 0, fontFamily: "inherit" }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ))}
+          <button
+            onClick={() => {
+              if (!confirm("Forget everything Wren has remembered? This can't be undone.")) return;
+              clearWrenNotes();
+              setBump(b => b + 1);
+            }}
+            style={{ width: "100%", marginTop: 6, padding: "8px 0", borderRadius: 10, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600, border: `1px solid ${c.line}`, background: c.white, color: c.rosedeep }}
+          >
+            Forget everything
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ExportDataModal({ onClose }) {
   const dump = (() => {
     const out = {};

@@ -178,6 +178,45 @@ export function removeDeloadWeek(weekNum) {
   return next;
 }
 
+// ---------- Wren long-term memory ----------
+// Append-only list of facts Wren has learned about Lauren and explicitly
+// chosen to remember (preferences, recurring issues, off-limit lifts she
+// dislikes, life context). Stored locally; surfaced in API context every
+// turn so Wren has continuity across chat resets.
+//
+// Each note: { id, text, createdAt, source: 'wren' | 'lauren' }
+export function getWrenNotes() {
+  const v = load('wrenNotes', []);
+  return Array.isArray(v) ? v : [];
+}
+
+export function addWrenNote({ text, source = 'wren' }) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return getWrenNotes();
+  const list = getWrenNotes();
+  // De-dupe by exact text (case-insensitive) to keep the store clean.
+  const key = trimmed.toLowerCase();
+  if (list.some(n => String(n.text || '').toLowerCase() === key)) return list;
+  const next = [...list, {
+    id: `wn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+    text: trimmed,
+    createdAt: Date.now(),
+    source: source === 'lauren' ? 'lauren' : 'wren',
+  }];
+  save('wrenNotes', next);
+  return next;
+}
+
+export function removeWrenNote(id) {
+  const next = getWrenNotes().filter(n => n.id !== id);
+  save('wrenNotes', next);
+  return next;
+}
+
+export function clearWrenNotes() {
+  save('wrenNotes', []);
+}
+
 function fixSession(sess) {
   if (!sess || !Array.isArray(sess.exercises)) return sess;
   return {
