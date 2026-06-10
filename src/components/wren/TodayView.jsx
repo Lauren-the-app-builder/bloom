@@ -501,22 +501,25 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              const ok = window.confirm(
-                                `Mark Session ${s.session_label} as not done?\n\nThis removes the most recent Session ${s.session_label} log from your history.`
-                              );
-                              if (!ok) return;
                               if (!startDate) return;
                               const weekStart = startDate.getTime() + (currentWeek - 1) * 7 * 86400000;
-                              const matches = getSessions()
-                                .filter(sess => {
-                                  if (Number(sess.finishedAt) < weekStart) return false;
-                                  if ((sess.workoutName || '').includes('(past entry)')) return false;
-                                  const m = /^Session\s+([A-Za-z])/.exec(sess.workoutName || '');
-                                  return m && m[1].toUpperCase() === String(s.session_label).toUpperCase();
-                                })
-                                .sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
+                              const weekEnd = weekStart + 7 * 86400000;
+                              const matches = getSessions().filter(sess => {
+                                const t = Number(sess.finishedAt);
+                                if (!Number.isFinite(t)) return false;
+                                if (t < weekStart || t >= weekEnd) return false;
+                                if ((sess.workoutName || '').includes('(past entry)')) return false;
+                                const m = /^Session\s+([A-Za-z])/.exec(sess.workoutName || '');
+                                return m && m[1].toUpperCase() === String(s.session_label).toUpperCase();
+                              });
                               if (!matches.length) return;
-                              deleteSession(matches[0].finishedAt);
+                              const ok = window.confirm(
+                                matches.length === 1
+                                  ? `Mark Session ${s.session_label} as not done?\n\nThis removes the Session ${s.session_label} log from this week.`
+                                  : `Mark Session ${s.session_label} as not done?\n\nThis removes ${matches.length} Session ${s.session_label} logs from this week (including any with sets recorded in the Program view).`
+                              );
+                              if (!ok) return;
+                              for (const m of matches) deleteSession(m.finishedAt);
                               setScheduleBump(b => b + 1);
                             }}
                             title="Mark as not done"

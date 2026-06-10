@@ -3198,14 +3198,10 @@ function RestTimerScreen({ onBack }) {
   );
 }
 
-function SettingsModal({ onClose, onExport, onOpenRestTimer, onOpenWrenMemory, unit, setUnit, todayBackground = "sunset", setTodayBackground }) {
+function SettingsModal({ onClose, onExport, onOpenRestTimer, onOpenWrenMemory, onOpenBackground, unit, setUnit, todayBackground = "sunset" }) {
   const btn = { width: "100%", background: c.white, border: `1px solid ${c.line}`, borderRadius: 14, padding: 14, fontSize: 13, fontWeight: 600, cursor: "pointer", color: c.charcoal, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit" };
-  // Background options for the Today screen. Add new entries here to make
-  // them selectable; the file must live in /public so it survives builds.
-  const BG_OPTIONS = [
-    { id: "sunset", label: "Sunset", src: "/sunset.png" },
-    { id: "lauren", label: "Lauren", src: "/Lauren.png" },
-  ];
+  // Label for the currently-selected background (shown on the row).
+  const BG_LABELS = { sunset: "Sunset", lauren: "Lauren" };
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 300 }} onClick={onClose}>
@@ -3231,44 +3227,17 @@ function SettingsModal({ onClose, onExport, onOpenRestTimer, onOpenWrenMemory, u
           Switch to {unit === "kg" ? "lb" : "kg"}
         </button>
 
-        {/* Today screen background — thumbnail picker. Only affects the
-            Today screen; everything else stays the same. */}
-        {setTodayBackground && (
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: c.muted, letterSpacing: 0.5, textTransform: "uppercase", margin: "4px 4px 8px" }}>
-              Today background
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              {BG_OPTIONS.map(opt => {
-                const selected = todayBackground === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    onClick={() => setTodayBackground(opt.id)}
-                    style={{
-                      flex: 1, padding: 0, borderRadius: 14,
-                      border: `2px solid ${selected ? c.rosedeep : c.line}`,
-                      background: c.white, cursor: "pointer", fontFamily: "inherit",
-                      overflow: "hidden", boxShadow: selected ? "0 4px 14px rgba(201,122,174,0.25)" : "none",
-                      transition: "border-color 0.15s ease, box-shadow 0.15s ease",
-                    }}
-                  >
-                    <div style={{
-                      width: "100%", aspectRatio: "3 / 2",
-                      backgroundImage: `url(${opt.src})`,
-                      backgroundSize: "cover", backgroundPosition: "center top",
-                    }} />
-                    <div style={{
-                      padding: "8px 10px", fontSize: 12, fontWeight: 700,
-                      color: selected ? c.rosedeep : c.charcoal, textAlign: "center",
-                    }}>
-                      {opt.label}{selected ? " ·" : ""}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+        {/* Today background — opens its own picker screen. */}
+        {onOpenBackground && (
+          <button onClick={onOpenBackground} style={{ ...btn, marginBottom: 10, justifyContent: "space-between" }}>
+            <span>Today background</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 12, color: c.muted, fontWeight: 500 }}>
+                {BG_LABELS[todayBackground] || "Sunset"}
+              </span>
+              <ChevronRight size={16} color={c.muted} />
+            </span>
+          </button>
         )}
 
         {/* What Wren remembers — opens its own screen so Lauren can review
