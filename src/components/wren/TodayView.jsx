@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, CalendarRange } from 'lucide-react';
 import { c } from './tokens';
-import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek } from '../../lib/storage';
+import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession } from '../../lib/storage';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Sunday'];
@@ -402,15 +402,43 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
                           <div style={{ fontSize: 11, color: c.muted }}>{s.scheduled_day || 'unscheduled'}</div>
                         </div>
                         {done ? (
-                          /* Quiet circle-check: outline ring with a slim check. */
-                          <div style={{
-                            width: 22, height: 22, borderRadius: '50%',
-                            border: `1.5px solid ${c.muted}`,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            flexShrink: 0,
-                          }}>
+                          /* Quiet circle-check: outline ring with a slim
+                             check. Tap to undo if the session was
+                             accidentally logged — removes the most recent
+                             matching session record from this week. */
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const ok = window.confirm(
+                                `Mark Session ${s.session_label} as not done?\n\nThis removes the most recent Session ${s.session_label} log from your history.`
+                              );
+                              if (!ok) return;
+                              if (!startDate) return;
+                              const weekStart = startDate.getTime() + (currentWeek - 1) * 7 * 86400000;
+                              const matches = getSessions()
+                                .filter(sess => {
+                                  if (Number(sess.finishedAt) < weekStart) return false;
+                                  if ((sess.workoutName || '').includes('(past entry)')) return false;
+                                  const m = /^Session\s+([A-Za-z])/.exec(sess.workoutName || '');
+                                  return m && m[1].toUpperCase() === String(s.session_label).toUpperCase();
+                                })
+                                .sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
+                              if (!matches.length) return;
+                              deleteSession(matches[0].finishedAt);
+                              setScheduleBump(b => b + 1);
+                            }}
+                            title="Mark as not done"
+                            style={{
+                              width: 22, height: 22, borderRadius: '50%',
+                              border: `1.5px solid ${c.muted}`,
+                              background: 'transparent',
+                              padding: 0, cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              flexShrink: 0, fontFamily: 'inherit',
+                            }}
+                          >
                             <Check size={12} color={c.muted} strokeWidth={2.5} />
-                          </div>
+                          </button>
                         ) : isToday ? (
                           <span style={{ fontSize: 10, fontWeight: 700, color: c.rosedeep, background: c.blushLight, padding: '2px 8px', borderRadius: 999 }}>Today</span>
                         ) : (
