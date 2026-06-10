@@ -372,6 +372,7 @@ export default function BloomApp() {
   const [showSettings, setShowSettings] = useState(false);
   const [showRestTimer, setShowRestTimer] = useState(false);
   const [showWrenMemory, setShowWrenMemory] = useState(false);
+  const [showBackground, setShowBackground] = useState(false);
   const [showExProgress, setShowExProgress] = useState(null); // exercise name or null
   const WREN_GREETING = { from: "coach", text: "Hi Lauren! I'm Wren 🌙 — your coach. I can see your workouts, PRs, schedule, and history. Try asking 'what should I do today?' or 'am I plateauing on hip thrust?'" };
   const [chatHistory, setChatHistory] = useLocalState("chatHistory", []); // [{id, title, createdAt, updatedAt, messages}]
@@ -552,16 +553,24 @@ export default function BloomApp() {
             onExport={() => { setShowSettings(false); setShowExport(true); }}
             onOpenRestTimer={() => { setShowSettings(false); setShowRestTimer(true); }}
             onOpenWrenMemory={() => { setShowSettings(false); setShowWrenMemory(true); }}
+            onOpenBackground={() => { setShowSettings(false); setShowBackground(true); }}
             unit={unit}
             setUnit={setUnit}
             todayBackground={todayBackground}
-            setTodayBackground={setTodayBackground}
           />
         )}
 
         {showRestTimer && <RestTimerScreen onBack={() => setShowRestTimer(false)} />}
 
         {showWrenMemory && <WrenMemoryScreen onBack={() => setShowWrenMemory(false)} />}
+
+        {showBackground && (
+          <BackgroundScreen
+            onBack={() => setShowBackground(false)}
+            value={todayBackground}
+            onChange={setTodayBackground}
+          />
+        )}
 
         {showExProgress && (
           <ExerciseProgressView
@@ -3377,6 +3386,97 @@ function WrenMemoryScreen({ onBack }) {
             </button>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Today background picker — full-screen view, mirrors WrenMemoryScreen.
+// Each option is a large thumbnail; the selected one gets a pink ring +
+// shadow. Adds new entries by extending BG_OPTIONS.
+function BackgroundScreen({ onBack, value = "sunset", onChange }) {
+  const BG_OPTIONS = [
+    { id: "sunset", label: "Sunset", src: "/sunset.png" },
+    { id: "lauren", label: "Lauren", src: "/Lauren.png" },
+  ];
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: c.cream, zIndex: 300,
+      display: "flex", flexDirection: "column",
+      maxWidth: 430, margin: "0 auto",
+    }}>
+      {/* Top bar */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10,
+        padding: "16px 16px 12px",
+        borderBottom: `1px solid ${c.line}`,
+        flexShrink: 0,
+      }}>
+        <button
+          onClick={onBack}
+          style={{
+            width: 32, height: 32, borderRadius: "50%",
+            background: c.white, border: `1px solid ${c.line}`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer", flexShrink: 0,
+          }}
+        >
+          <ChevronRight size={16} color={c.charcoal} style={{ transform: "rotate(180deg)" }} />
+        </button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: c.charcoal, letterSpacing: -0.3 }}>Today background</div>
+          <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>
+            Pick what you see at the top of the Today screen
+          </div>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div style={{
+        flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch",
+        padding: "16px 16px calc(28px + env(safe-area-inset-bottom)) 16px",
+        display: "flex", flexDirection: "column", gap: 12,
+      }}>
+        {BG_OPTIONS.map(opt => {
+          const selected = value === opt.id;
+          return (
+            <button
+              key={opt.id}
+              onClick={() => onChange && onChange(opt.id)}
+              style={{
+                padding: 0, borderRadius: 18,
+                border: `2px solid ${selected ? c.rosedeep : c.line}`,
+                background: c.white, cursor: "pointer", fontFamily: "inherit",
+                overflow: "hidden",
+                boxShadow: selected ? "0 6px 18px rgba(201,122,174,0.25)" : "none",
+                transition: "border-color 0.15s ease, box-shadow 0.15s ease",
+                textAlign: "left",
+              }}
+            >
+              <div style={{
+                width: "100%", aspectRatio: "3 / 2",
+                backgroundImage: `url(${opt.src})`,
+                backgroundSize: "cover", backgroundPosition: "center top",
+              }} />
+              <div style={{
+                padding: "12px 14px",
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+              }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: selected ? c.rosedeep : c.charcoal }}>
+                  {opt.label}
+                </span>
+                {selected && (
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, color: "white",
+                    background: c.rosedeep, padding: "3px 10px", borderRadius: 999, letterSpacing: 0.4,
+                  }}>
+                    SELECTED
+                  </span>
+                )}
+              </div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
