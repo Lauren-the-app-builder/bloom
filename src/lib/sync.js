@@ -39,16 +39,18 @@ function saveKV(key, value) {
 export async function pullAll() {
   if (!isSupabaseConfigured) return;
 
-  const [workouts, sessions, customs, chats, kv, wrenChatRows, wrenPrograms, wrenMissed] = await Promise.all([
+  const [workouts, sessions, chats, kv, wrenChatRows, wrenPrograms, wrenMissed] = await Promise.all([
     supabase.from('bloom_workouts').select('*'),
     supabase.from('bloom_sessions').select('*').order('finished_at', { ascending: false }),
-    supabase.from('bloom_custom_exercises').select('*'),
     supabase.from('bloom_chat_history').select('*').order('updated_at', { ascending: false }),
     supabase.from('bloom_kv').select('*'),
     supabase.from('wren_chat').select('*').order('created_at', { ascending: true }),
     supabase.from('wren_program').select('*'),
     supabase.from('wren_missed_sessions').select('*').order('session_date', { ascending: false }),
   ]);
+  // bloom_custom_exercises is intentionally not pulled — table doesn't
+  // exist in this project, and customExercises are kept local-only.
+  const customs = { data: null };
 
   if (workouts.data) {
     saveKV('myWorkouts', workouts.data.map((w) => ({
@@ -170,15 +172,11 @@ const pushers = {
     if (error) throw error;
   },
 
+  // customExercises stays local-only — bloom_custom_exercises doesn't exist
+  // in Supabase for this project. Keep the no-op pusher so queued jobs from
+  // earlier in the session drain cleanly without blocking the queue.
   async customExercises() {
-    const list = loadKV('customExercises', []);
-    if (!list.length) return;
-    const rows = list.map((c) => ({
-      id: c.id, name: c.name, muscle: c.muscle || null,
-      rest_sec: c.restSec ?? 90, tips: c.tips || [], video_id: c.videoId || null,
-    }));
-    const { error } = await supabase.from('bloom_custom_exercises').upsert(rows, { onConflict: 'id' });
-    if (error) throw error;
+    return;
   },
 
   async chatHistory() {
@@ -287,9 +285,9 @@ export async function deleteSessionRemote(id) {
   if (!isSupabaseConfigured || !id) return;
   await supabase.from('bloom_sessions').delete().eq('id', id);
 }
-export async function deleteCustomExerciseRemote(id) {
-  if (!isSupabaseConfigured) return;
-  await supabase.from('bloom_custom_exercises').delete().eq('id', id);
+export async function deleteCustomExerciseRemote(_id) {
+  // No-op — see pushers.customExercises above. Local delete still works.
+  return;
 }
 export async function deleteChatRemote(id) {
   if (!isSupabaseConfigured) return;
