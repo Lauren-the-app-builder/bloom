@@ -1,33 +1,18 @@
 import { useEffect, useState } from 'react';
 import BloomApp from './BloomApp';
-import SignIn from './SignIn';
-import { supabase, isSupabaseConfigured } from './lib/supabase';
+import { isSupabaseConfigured } from './lib/supabase';
 import { pullAll, flushQueue, setSuppressPushes } from './lib/sync';
 
+// Single-user app — no Supabase auth. The anon key reaches the bloom_*/wren_*
+// tables directly because their RLS is disabled (see migration 003). On boot
+// we pull everything into localStorage, then re-enable pushes and drain the
+// retry queue. If Supabase env vars are missing we just render BloomApp
+// against local-only state.
 export default function App() {
-  const [authState, setAuthState] = useState('loading'); // loading | signedIn | signedOut
-  const [syncedOnce, setSyncedOnce] = useState(false);
+  const [syncedOnce, setSyncedOnce] = useState(!isSupabaseConfigured);
 
   useEffect(() => {
-    if (!isSupabaseConfigured) {
-      // Allow the app to run un-synced (e.g. local dev with no env vars).
-      setAuthState('signedIn');
-      return;
-    }
-    let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      setAuthState(data.session ? 'signedIn' : 'signedOut');
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setAuthState(session ? 'signedIn' : 'signedOut');
-    });
-    return () => { mounted = false; sub.subscription.unsubscribe(); };
-  }, []);
-
-  // On sign-in: pull from Supabase, then flush any queued local writes.
-  useEffect(() => {
-    if (authState !== 'signedIn' || !isSupabaseConfigured) return;
+    if (!isSupabaseConfigured) return;
     setSuppressPushes(true);
     (async () => {
       try {
@@ -46,15 +31,10 @@ export default function App() {
         }, 250);
       }
     })();
-  }, [authState]);
+  }, []);
 
-  if (authState === 'loading') {
-    return <div style={{ minHeight: '100vh', background: '#FDF9F9' }} />;
-  }
-  if (authState === 'signedOut') return <SignIn />;
-  // Don't mount BloomApp until the first pull has finished — otherwise it
-  // would render with stale local data and trigger pushes that overwrite
-  // the server.
+  // Hold the splash until the first pull resolves so BloomApp doesn't render
+  // with stale local data and trigger writes that overwrite the server.
   if (isSupabaseConfigured && !syncedOnce) {
     return <div style={{ minHeight: '100vh', background: '#FDF9F9' }} />;
   }

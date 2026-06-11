@@ -87,10 +87,12 @@ import {
   RefreshCw,
   Link2,
   Link2Off,
+  Bug,
+  Download,
+  Image as ImageIcon,
+  Scale,
 } from "lucide-react";
 import { useLocalState, recordSession, getSessions, getLastSession, updateSession, deleteSession, load, save, getActiveProgram, getMissedSessions, ensureSessionAOrder, ensureSessionBPulldown, ensureSessionCLegCurl, getWrenNotes, removeWrenNote, clearWrenNotes } from "./lib/storage";
-import { deleteSessionRemote } from "./lib/sync";
-import { supabase, isSupabaseConfigured } from "./lib/supabase";
 import { subscribeToPush, scheduleRestPush, cancelRestPush } from "./lib/push";
 import WrenView from "./components/wren/WrenView";
 import TodayView from "./components/wren/TodayView";
@@ -373,6 +375,10 @@ export default function BloomApp() {
   const [showRestTimer, setShowRestTimer] = useState(false);
   const [showWrenMemory, setShowWrenMemory] = useState(false);
   const [showBackground, setShowBackground] = useState(false);
+  // Bug-report modal at app scope so it's reachable from Settings (i.e.
+  // outside an active workout). ActiveWorkout keeps its own trigger for the
+  // mid/post-workout entry points; both share the same bloom:bugNotes store.
+  const [showBugReport, setShowBugReport] = useState(false);
   const [showExProgress, setShowExProgress] = useState(null); // exercise name or null
   const WREN_GREETING = { from: "coach", text: "Hi Lauren! I'm Wren 🌙 — your coach. I can see your workouts, PRs, schedule, and history. Try asking 'what should I do today?' or 'am I plateauing on hip thrust?'" };
   const [chatHistory, setChatHistory] = useLocalState("chatHistory", []); // [{id, title, createdAt, updatedAt, messages}]
@@ -554,11 +560,21 @@ export default function BloomApp() {
             onOpenRestTimer={() => { setShowSettings(false); setShowRestTimer(true); }}
             onOpenWrenMemory={() => { setShowSettings(false); setShowWrenMemory(true); }}
             onOpenBackground={() => { setShowSettings(false); setShowBackground(true); }}
+            onOpenBugReport={() => { setShowSettings(false); setShowBugReport(true); }}
             unit={unit}
             setUnit={setUnit}
             todayBackground={todayBackground}
           />
         )}
+
+        {/* Bug report — opened from Settings (no active workout); the
+            in-workout entry points use ActiveWorkout's own copy. */}
+        <BugReportModal
+          open={showBugReport}
+          onClose={() => setShowBugReport(false)}
+          mode="full"
+          currentWorkoutName={null}
+        />
 
         {showRestTimer && <RestTimerScreen onBack={() => setShowRestTimer(false)} />}
 
@@ -1588,14 +1604,13 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
   // finish-summary screen. During the workout you can ADD notes (no email).
   const [showBugReport, setShowBugReport] = useState(false);
   const [bugReportMode, setBugReportMode] = useState("full"); // "full" on Done, "quick" mid-workout
-  const [bugDraft, setBugDraft] = useState("");
-  const [bugNotes, setBugNotes] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("bloom:bugNotes") || "[]"); } catch { return []; }
-  });
-  const persistBugNotes = (next) => {
-    setBugNotes(next);
-    try { localStorage.setItem("bloom:bugNotes", JSON.stringify(next)); } catch {}
-  };
+  // bug-report state itself lives in BugReportModal — it reads/writes
+  // bloom:bugNotes directly so all entry points stay in sync.
+  // Count for the trigger labels ("Note a bug · 3"). Read on each render so
+  // it bumps after a save without us threading state through props.
+  const bugNotesCount = (() => {
+    try { return JSON.parse(localStorage.getItem("bloom:bugNotes") || "[]").length; } catch { return 0; }
+  })();
 
   // Speak the chosen phrase using the chosen system voice. Configured only in
   // Settings → Rest timer; no UI for changes during a workout.
@@ -1917,6 +1932,49 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
     setFinishSummary({ totalSets, exNames, durationSec: elapsed, progressions, newPRs, finishedAt });
   };
 
+  // Per-exercise progression/recommendation card. Used by both the
+  // single-exercise path and (now) each exercise inside a superset, so the
+  // same "you hit the top — go up to Xkg next time" copy + Wren-bump button
+  // appears wherever there's a weight-based lift. Returns null for bands
+  // exercises (no weight progression to display).
+  const renderRecCard = (ex) => {
+    if (isBandsExercise(ex.name, allExercises)) return null;
+    return (
+      <div style={{ background: c.blushLight, borderRadius: 12, padding: "10px 12px", display: "flex", gap: 8, alignItems: "flex-start" }}>
+        <Sparkles size={14} color={c.rosedeep} style={{ flexShrink: 0, marginTop: 2 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ fontSize: 11, color: c.charcoal, margin: 0, lineHeight: 1.5 }}>{(() => {
+            // Live override: if every set is done and every one hit
+            // the top of the rep range, tell her to go up next time.
+            const tReps = targets[ex.name];
+            const bReps = workout.bottomTargets?.[ex.name];
+            const done = ex.rows.filter((r) => r.done && Number(r.reps) > 0);
+            if (tReps && done.length === ex.rows.length && done.length > 0 && done.every((r) => Number(r.reps) >= tReps)) {
+              const w = Math.max(...done.map((r) => Number(r.weight) || 0));
+              const isLowerName = /barbell|squat|deadlift|hip thrust|leg press|rdl/i.test(ex.name);
+              const nextW = w > 0 ? bumpWeight(w, unit, isLowerName) : null;
+              // After a bump, the rep aim resets to the bottom of the range —
+              // work it back up to tReps before the next jump.
+              const startReps = bReps && bReps < tReps ? bReps : null;
+              const repTail = startReps ? ` Aim for ${startReps} reps to start.` : '';
+              return nextW
+                ? `🎯 You hit ${tReps} on every set — go up to ${nextW}${unit} next time.${repTail}`
+                : `🎯 You hit ${tReps} on every set — go up next time.${repTail}`;
+            }
+            return exerciseGoals[ex.name];
+          })()}</p>
+          <button
+            onClick={() => askWrenForBump(ex.name)}
+            disabled={!!bumpLoading[ex.name]}
+            style={{ marginTop: 6, background: c.white, border: `1px solid ${c.rose}`, borderRadius: 999, padding: "4px 10px", fontSize: 10, fontWeight: 700, color: c.rosedeep, cursor: bumpLoading[ex.name] ? "default" : "pointer", letterSpacing: 0.3, display: "inline-flex", alignItems: "center", gap: 4 }}
+          >
+            <Sparkles size={10} /> {bumpLoading[ex.name] ? "Asking Wren…" : "Ask Wren for the jump"}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div style={{ position: "fixed", inset: 0, background: c.cream, zIndex: 100, overflowY: "auto", maxWidth: 430, margin: "0 auto" }}>
       {/* sticky header with timer */}
@@ -1935,7 +1993,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
             onClick={() => { setBugReportMode("quick"); setShowBugReport(true); }}
             style={{ background: "none", border: "none", color: c.muted, fontSize: 11, cursor: "pointer", padding: "2px 6px", display: "flex", alignItems: "center", gap: 4 }}
           >
-            🐞 Note a bug{bugNotes.length > 0 ? ` · ${bugNotes.length}` : ""}
+            🐞 Note a bug{bugNotesCount > 0 ? ` · ${bugNotesCount}` : ""}
           </button>
         </div>
       </div>
@@ -2002,17 +2060,23 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
                   <div style={{ position: "absolute", top: -10, left: 16, background: c.rosedeep, color: "white", fontSize: 9, fontWeight: 700, letterSpacing: 1, padding: "3px 10px", borderRadius: 999, display: "flex", alignItems: "center", gap: 4 }}>
                     <Link2 size={10} /> SUPERSET
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12, marginTop: 4 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12, marginTop: 4 }}>
                     {exs.map((ex, idx) => {
                       const exData = allExercises.find(e => e.name === ex.name);
+                      // Per-exercise rec card — same component the
+                      // single-exercise path uses. Null for bands.
+                      const rec = renderRecCard(ex);
                       return (
-                        <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            <p style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>{String.fromCharCode(65 + idx)} · {ex.name}</p>
-                            <p style={{ fontSize: 10, color: c.muted, margin: "1px 0 0" }}>
-                              {exData?.muscle} · target {targets[ex.name] || 10} reps
-                            </p>
+                        <div key={idx} style={{ display: "flex", flexDirection: "column", gap: rec ? 6 : 0 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <p style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>{String.fromCharCode(65 + idx)} · {ex.name}</p>
+                              <p style={{ fontSize: 10, color: c.muted, margin: "1px 0 0" }}>
+                                {exData?.muscle} · target {targets[ex.name] || 10} reps
+                              </p>
+                            </div>
                           </div>
+                          {rec}
                         </div>
                       );
                     })}
@@ -2099,41 +2163,10 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
 
               {/* per-exercise recommendation — hidden for bands exercises,
                   which have no weight-based progression to display. */}
-              {!isBandsExercise(ex.name, allExercises) && (
-              <div style={{ background: c.blushLight, borderRadius: 12, padding: "10px 12px", marginBottom: 10, display: "flex", gap: 8, alignItems: "flex-start" }}>
-                <Sparkles size={14} color={c.rosedeep} style={{ flexShrink: 0, marginTop: 2 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 11, color: c.charcoal, margin: 0, lineHeight: 1.5 }}>{(() => {
-                    // Live override: if every set is done and every one hit
-                    // the top of the rep range, tell her to go up next time.
-                    const tReps = targets[ex.name];
-                    const bReps = workout.bottomTargets?.[ex.name];
-                    const done = ex.rows.filter((r) => r.done && Number(r.reps) > 0);
-                    if (tReps && done.length === ex.rows.length && done.length > 0 && done.every((r) => Number(r.reps) >= tReps)) {
-                      const w = Math.max(...done.map((r) => Number(r.weight) || 0));
-                      const isLowerName = /barbell|squat|deadlift|hip thrust|leg press|rdl/i.test(ex.name);
-                      const nextW = w > 0 ? bumpWeight(w, unit, isLowerName) : null;
-                      // After a bump, the rep aim resets to the bottom of
-                      // the range — work it back up to tReps before the
-                      // next jump.
-                      const startReps = bReps && bReps < tReps ? bReps : null;
-                      const repTail = startReps ? ` Aim for ${startReps} reps to start.` : '';
-                      return nextW
-                        ? `🎯 You hit ${tReps} on every set — go up to ${nextW}${unit} next time.${repTail}`
-                        : `🎯 You hit ${tReps} on every set — go up next time.${repTail}`;
-                    }
-                    return exerciseGoals[ex.name];
-                  })()}</p>
-                  <button
-                    onClick={() => askWrenForBump(ex.name)}
-                    disabled={!!bumpLoading[ex.name]}
-                    style={{ marginTop: 6, background: c.white, border: `1px solid ${c.rose}`, borderRadius: 999, padding: "4px 10px", fontSize: 10, fontWeight: 700, color: c.rosedeep, cursor: bumpLoading[ex.name] ? "default" : "pointer", letterSpacing: 0.3, display: "inline-flex", alignItems: "center", gap: 4 }}
-                  >
-                    <Sparkles size={10} /> {bumpLoading[ex.name] ? "Asking Wren…" : "Ask Wren for the jump"}
-                  </button>
-                </div>
-              </div>
-              )}
+              {(() => {
+                const rec = renderRecCard(ex);
+                return rec ? <div style={{ marginBottom: 10 }}>{rec}</div> : null;
+              })()}
 
               {/* note */}
               {exerciseNotes[ex.name] ? (
@@ -2531,7 +2564,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
             onClick={() => { setBugReportMode("full"); setShowBugReport(true); }}
             style={{ width: "100%", background: "none", color: c.muted, border: `1px solid ${c.line}`, padding: "10px 0", marginTop: 10, borderRadius: 12, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
           >
-            🐞 Report bugs{bugNotes.length > 0 ? ` · ${bugNotes.length}` : ""}
+            🐞 Report bugs{bugNotesCount > 0 ? ` · ${bugNotesCount}` : ""}
           </button>
           {/* Escape hatch — if Finish was tapped by accident, delete the just-
               recorded session (locally AND remotely, so sync doesn't bring it
@@ -2540,12 +2573,10 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
             onClick={() => {
               if (!confirm("Resume the workout? This deletes the just-recorded session from your history; your sets remain in the workout so you can keep going.")) return;
               if (finishSummary?.finishedAt) {
-                // Look up the local record so we can grab its remote id (if it
-                // was already synced) before deleting it locally.
-                const list = load("sessions", []);
-                const target = list.find((s) => s.finishedAt === finishSummary.finishedAt);
+                // deleteSession() now handles the durable remote delete via
+                // the tombstone queue, so no explicit deleteSessionRemote
+                // call is needed here.
                 deleteSession(finishSummary.finishedAt);
-                if (target?.id) deleteSessionRemote(target.id).catch(() => {});
               }
               setFinishSummary(null);
             }}
@@ -2576,83 +2607,14 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
         </div>
       )}
 
-      {/* bug report modal — must be above the finish summary (zIndex 250) so it
-          shows on top when opened from the Done page */}
-      {showBugReport && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 350 }} onClick={() => setShowBugReport(false)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: c.cream, width: "100%", maxWidth: 430, borderRadius: "28px 28px 0 0", padding: 24, maxHeight: "85vh", overflowY: "auto" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>App bugs</h2>
-              <button onClick={() => setShowBugReport(false)} style={iconBtn}><X size={18} /></button>
-            </div>
-            <p style={{ fontSize: 12, color: c.muted, margin: "0 0 14px" }}>Jot anything weird you spot. Hit Email when you want to send the list to yourself.</p>
-
-            <textarea
-              value={bugDraft}
-              onChange={(e) => setBugDraft(e.target.value)}
-              placeholder="Describe the issue..."
-              rows={3}
-              style={{ width: "100%", boxSizing: "border-box", padding: 12, borderRadius: 12, border: `1px solid ${c.line}`, background: "white", fontSize: 14, fontFamily: "inherit", resize: "vertical" }}
-            />
-            <button
-              onClick={() => {
-                const text = bugDraft.trim();
-                if (!text) return;
-                persistBugNotes([...bugNotes, { ts: Date.now(), text, workout: workout.name }]);
-                setBugDraft("");
-              }}
-              disabled={!bugDraft.trim()}
-              style={{ width: "100%", marginTop: 8, padding: 12, borderRadius: 12, border: "none", cursor: bugDraft.trim() ? "pointer" : "default", background: bugDraft.trim() ? c.charcoal : c.line, color: "white", fontSize: 14, fontWeight: 600 }}
-            >
-              Add to list
-            </button>
-
-            {bugNotes.length > 0 && bugReportMode === "full" && (
-              <div style={{ marginTop: 18 }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: c.muted, letterSpacing: 0.5, margin: "0 0 8px" }}>SAVED · {bugNotes.length}</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {bugNotes.map((n, i) => (
-                    <div key={i} style={{ background: "white", borderRadius: 12, padding: 12, border: `1px solid ${c.line}`, display: "flex", justifyContent: "space-between", gap: 8 }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: 10, color: c.muted, margin: 0 }}>{new Date(n.ts).toLocaleString()} · {n.workout || "(no workout)"}</p>
-                        <p style={{ fontSize: 13, color: c.charcoal, margin: "2px 0 0", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{n.text}</p>
-                      </div>
-                      <button
-                        onClick={() => persistBugNotes(bugNotes.filter((_, j) => j !== i))}
-                        style={{ background: "none", border: "none", cursor: "pointer", color: c.muted, padding: 4, flexShrink: 0 }}
-                        aria-label="Remove"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-                  <a
-                    href={`mailto:ldunmore92@gmail.com?subject=${encodeURIComponent("Bloom app bugs")}&body=${encodeURIComponent(
-                      bugNotes.map((n) => `• ${new Date(n.ts).toLocaleString()} · ${n.workout || "(no workout)"}\n${n.text}`).join("\n\n")
-                    )}`}
-                    style={{ flex: 1, textDecoration: "none", textAlign: "center", padding: 12, borderRadius: 12, background: c.rosedeep, color: "white", fontSize: 14, fontWeight: 600 }}
-                  >
-                    Email me ({bugNotes.length})
-                  </a>
-                  <button
-                    onClick={() => { if (confirm("Clear all saved notes?")) persistBugNotes([]); }}
-                    style={{ padding: "12px 14px", borderRadius: 12, border: `1px solid ${c.line}`, background: "white", color: c.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
-                  >
-                    Clear
-                  </button>
-                </div>
-              </div>
-            )}
-            {bugReportMode === "quick" && bugNotes.length > 0 && (
-              <p style={{ fontSize: 11, color: c.muted, margin: "14px 0 0", textAlign: "center" }}>
-                {bugNotes.length} note{bugNotes.length === 1 ? "" : "s"} saved · email from the Done screen
-              </p>
-            )}
-          </div>
-        </div>
-      )}
+      {/* bug report modal — extracted to a standalone component so Settings
+          (outside a workout) can mount it too. Same bloom:bugNotes store. */}
+      <BugReportModal
+        open={showBugReport}
+        onClose={() => setShowBugReport(false)}
+        mode={bugReportMode}
+        currentWorkoutName={workout.name}
+      />
 
       {/* form tips modal */}
       {showFormTips && (
@@ -2865,7 +2827,6 @@ function WeekOverview({ onClose, onSessionsChange }) {
             onClose={() => setEditing(null)}
             onSave={(patch) => { updateSession(editing.finishedAt, patch); setEditing(null); refresh(); }}
             onDelete={() => {
-              if (editing.id) deleteSessionRemote(editing.id).catch(() => {});
               deleteSession(editing.finishedAt);
               setEditing(null);
               refresh();
@@ -3207,9 +3168,137 @@ function RestTimerScreen({ onBack }) {
   );
 }
 
-function SettingsModal({ onClose, onExport, onOpenRestTimer, onOpenWrenMemory, onOpenBackground, unit, setUnit, todayBackground = "sunset" }) {
-  const btn = { width: "100%", background: c.white, border: `1px solid ${c.line}`, borderRadius: 14, padding: 14, fontSize: 13, fontWeight: 600, cursor: "pointer", color: c.charcoal, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit" };
-  // Label for the currently-selected background (shown on the row).
+// Bug report modal — shared by ActiveWorkout (mid/post-workout entry) and
+// Settings (outside a workout). State persists to bloom:bugNotes so the list
+// is the same wherever it's opened.
+//   mode="full"  — show the saved list, email/clear actions.
+//   mode="quick" — write-only; just adds to the list, omits the table.
+// currentWorkoutName is stamped onto each new note (null when opened from
+// Settings outside a workout).
+function BugReportModal({ open, onClose, mode = "full", currentWorkoutName = null }) {
+  const [bugDraft, setBugDraft] = useState("");
+  const [bugNotes, setBugNotes] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("bloom:bugNotes") || "[]"); } catch { return []; }
+  });
+  const persistBugNotes = (next) => {
+    setBugNotes(next);
+    try { localStorage.setItem("bloom:bugNotes", JSON.stringify(next)); } catch {
+      /* localStorage write can fail under strict privacy modes — ignore. */
+    }
+  };
+  if (!open) return null;
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 350 }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: c.cream, width: "100%", maxWidth: 430, borderRadius: "28px 28px 0 0", padding: 24, maxHeight: "85vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>App bugs</h2>
+          <button onClick={onClose} style={iconBtn}><X size={18} /></button>
+        </div>
+        <p style={{ fontSize: 12, color: c.muted, margin: "0 0 14px" }}>Jot anything weird you spot. Hit Email when you want to send the list to yourself.</p>
+
+        <textarea
+          value={bugDraft}
+          onChange={(e) => setBugDraft(e.target.value)}
+          placeholder="Describe the issue..."
+          rows={3}
+          style={{ width: "100%", boxSizing: "border-box", padding: 12, borderRadius: 12, border: `1px solid ${c.line}`, background: "white", fontSize: 14, fontFamily: "inherit", resize: "vertical" }}
+        />
+        <button
+          onClick={() => {
+            const text = bugDraft.trim();
+            if (!text) return;
+            persistBugNotes([...bugNotes, { ts: Date.now(), text, workout: currentWorkoutName }]);
+            setBugDraft("");
+          }}
+          disabled={!bugDraft.trim()}
+          style={{ width: "100%", marginTop: 8, padding: 12, borderRadius: 12, border: "none", cursor: bugDraft.trim() ? "pointer" : "default", background: bugDraft.trim() ? c.charcoal : c.line, color: "white", fontSize: 14, fontWeight: 600 }}
+        >
+          Add to list
+        </button>
+
+        {bugNotes.length > 0 && mode === "full" && (
+          <div style={{ marginTop: 18 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: c.muted, letterSpacing: 0.5, margin: "0 0 8px" }}>SAVED · {bugNotes.length}</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {bugNotes.map((n, i) => (
+                <div key={i} style={{ background: "white", borderRadius: 12, padding: 12, border: `1px solid ${c.line}`, display: "flex", justifyContent: "space-between", gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 10, color: c.muted, margin: 0 }}>{new Date(n.ts).toLocaleString()} · {n.workout || "(no workout)"}</p>
+                    <p style={{ fontSize: 13, color: c.charcoal, margin: "2px 0 0", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{n.text}</p>
+                  </div>
+                  <button
+                    onClick={() => persistBugNotes(bugNotes.filter((_, j) => j !== i))}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: c.muted, padding: 4, flexShrink: 0 }}
+                    aria-label="Remove"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <a
+                href={`mailto:ldunmore92@gmail.com?subject=${encodeURIComponent("Bloom app bugs")}&body=${encodeURIComponent(
+                  bugNotes.map((n) => `• ${new Date(n.ts).toLocaleString()} · ${n.workout || "(no workout)"}\n${n.text}`).join("\n\n")
+                )}`}
+                style={{ flex: 1, textDecoration: "none", textAlign: "center", padding: 12, borderRadius: 12, background: c.rosedeep, color: "white", fontSize: 14, fontWeight: 600 }}
+              >
+                Email me ({bugNotes.length})
+              </a>
+              <button
+                onClick={() => { if (confirm("Clear all saved notes?")) persistBugNotes([]); }}
+                style={{ padding: "12px 14px", borderRadius: 12, border: `1px solid ${c.line}`, background: "white", color: c.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
+        {mode === "quick" && bugNotes.length > 0 && (
+          <p style={{ fontSize: 11, color: c.muted, margin: "14px 0 0", textAlign: "center" }}>
+            {bugNotes.length} note{bugNotes.length === 1 ? "" : "s"} saved · email from the Done screen
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Single row style shared by every Settings entry. Icon on the left, label
+// left-aligned, optional value + chevron on the right. `danger` flips the
+// text/icon to rosedeep for destructive actions (sign-out).
+function SettingsRow({ icon: Icon, label, value, onClick, chevron = false, danger = false }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "13px 14px",
+        background: c.white,
+        border: `1px solid ${c.line}`,
+        borderRadius: 14,
+        marginBottom: 10,
+        cursor: "pointer",
+        fontFamily: "inherit",
+        textAlign: "left",
+        color: danger ? c.rosedeep : c.charcoal,
+        fontSize: 13,
+        fontWeight: 600,
+      }}
+    >
+      <Icon size={16} color={danger ? c.rosedeep : c.muted} style={{ flexShrink: 0 }} />
+      <span style={{ flex: 1 }}>{label}</span>
+      {value && <span style={{ fontSize: 12, color: c.muted, fontWeight: 500 }}>{value}</span>}
+      {chevron && <ChevronRight size={16} color={c.muted} style={{ flexShrink: 0 }} />}
+    </button>
+  );
+}
+
+function SettingsModal({ onClose, onExport, onOpenRestTimer, onOpenWrenMemory, onOpenBackground, onOpenBugReport, unit, setUnit, todayBackground = "sunset" }) {
+  // Label for the currently-selected background (shown on its row).
   const BG_LABELS = { sunset: "Sunset", lauren: "Lauren" };
 
   return (
@@ -3220,54 +3309,35 @@ function SettingsModal({ onClose, onExport, onOpenRestTimer, onOpenWrenMemory, o
           <button onClick={onClose} style={{ background: "none", border: "none", color: c.muted, cursor: "pointer" }}><X size={20} /></button>
         </div>
 
-        {/* Rest timer → opens its own page (Settings closes, Rest timer takes over) */}
-        <button onClick={onOpenRestTimer} style={{ ...btn, marginBottom: 10, justifyContent: "space-between" }}>
-          <span>Rest timer</span>
-          <ChevronRight size={16} color={c.muted} />
-        </button>
-
-        {/* Refresh */}
-        <button onClick={() => window.location.reload()} style={{ ...btn, marginBottom: 10 }}>
-          <RefreshCw size={14} /> Refresh app
-        </button>
-
-        {/* Unit toggle */}
-        <button onClick={() => setUnit(unit === "kg" ? "lb" : "kg")} style={{ ...btn, marginBottom: 10 }}>
-          Switch to {unit === "kg" ? "lb" : "kg"}
-        </button>
-
-        {/* Today background — opens its own picker screen. */}
+        {/* Navigational rows — each opens its own page/picker. */}
+        <SettingsRow icon={Timer} label="Rest timer" chevron onClick={onOpenRestTimer} />
         {onOpenBackground && (
-          <button onClick={onOpenBackground} style={{ ...btn, marginBottom: 10, justifyContent: "space-between" }}>
-            <span>Today background</span>
-            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 12, color: c.muted, fontWeight: 500 }}>
-                {BG_LABELS[todayBackground] || "Sunset"}
-              </span>
-              <ChevronRight size={16} color={c.muted} />
-            </span>
-          </button>
+          <SettingsRow
+            icon={ImageIcon}
+            label="Today background"
+            value={BG_LABELS[todayBackground] || "Sunset"}
+            chevron
+            onClick={onOpenBackground}
+          />
         )}
-
-        {/* What Wren remembers — opens its own screen so Lauren can review
-            and prune the long-term memory store. */}
         {onOpenWrenMemory && (
-          <button onClick={onOpenWrenMemory} style={{ ...btn, marginBottom: 10, justifyContent: "space-between" }}>
-            <span>Wren memory</span>
-            <ChevronRight size={16} color={c.muted} />
-          </button>
+          <SettingsRow icon={Sparkles} label="Wren memory" chevron onClick={onOpenWrenMemory} />
         )}
 
-        {/* Export */}
-        <button onClick={onExport} style={{ ...btn, marginBottom: 10 }}>
-          Export data
-        </button>
+        {/* Quick toggles + actions. */}
+        <SettingsRow
+          icon={Scale}
+          label="Units"
+          value={unit === "kg" ? "kg" : "lb"}
+          onClick={() => setUnit(unit === "kg" ? "lb" : "kg")}
+        />
+        <SettingsRow icon={RefreshCw} label="Refresh app" onClick={() => window.location.reload()} />
+        <SettingsRow icon={Download} label="Export data" chevron onClick={onExport} />
 
-        {/* Sign out */}
-        {isSupabaseConfigured && (
-          <button onClick={async () => { if (confirm("Sign out of Bloom?")) await supabase.auth.signOut(); }} style={{ ...btn, color: c.rosedeep }}>
-            Sign out
-          </button>
+        {/* Report a bug — opens BugReportModal at app scope so it's reachable
+            outside an active workout. */}
+        {onOpenBugReport && (
+          <SettingsRow icon={Bug} label="Report a bug" chevron onClick={onOpenBugReport} />
         )}
       </div>
     </div>
@@ -4689,7 +4759,6 @@ function ProgressView({ onSessionsChange, onExerciseTap }) {
           onClose={() => setEditing(null)}
           onSave={(patch) => { updateSession(editing.finishedAt, patch); setEditing(null); refresh(); }}
           onDelete={() => {
-            if (editing.id) deleteSessionRemote(editing.id).catch(() => {});
             deleteSession(editing.finishedAt);
             setEditing(null);
             refresh();

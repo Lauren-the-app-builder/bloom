@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { queue, KV_KEYS } from './sync';
+import { queue, KV_KEYS, tombstoneSession } from './sync';
 
 const PREFIX = 'bloom:';
 
@@ -88,9 +88,20 @@ export function updateSession(finishedAt, patch) {
 }
 
 export function deleteSession(finishedAt) {
-  const list = load('sessions', []).filter(s => s.finishedAt !== finishedAt);
-  save('sessions', list);
-  return list;
+  const list = load('sessions', []);
+  // Capture the rows we're about to drop so we can also delete them on the
+  // server — otherwise the next pullAll() restores them and the UI shows the
+  // session as done again. tombstoneSession() persists the id and queues a
+  // durable delete that retries until Supabase confirms; pullAll() filters
+  // tombstoned ids out of incoming rows so an early pull can't resurrect
+  // them before the remote delete lands.
+  const removed = list.filter(s => s.finishedAt === finishedAt);
+  const next = list.filter(s => s.finishedAt !== finishedAt);
+  save('sessions', next);
+  for (const s of removed) {
+    if (s.id) tombstoneSession(s.id);
+  }
+  return next;
 }
 
 // ---------- Wren chat ----------

@@ -2,8 +2,9 @@
 //
 // Strategy:
 //   - Reads always come from localStorage (instant, offline-safe).
-//   - On sign-in / boot, pullAll() fetches all bloom_* rows for the user
-//     and replaces the localStorage cache.
+//   - On boot, pullAll() fetches every bloom_*/wren_* row and replaces the
+//     localStorage cache. No auth — the tables have RLS disabled and the
+//     anon key reads/writes directly (see Supabase migration 003).
 //   - On every write the app already updates localStorage, then calls
 //     queue('workouts' | 'sessions' | ...) to push the change to Supabase.
 //   - If a push fails (offline, network error) it sits in a retry queue
@@ -14,6 +15,12 @@ import { supabase, isSupabaseConfigured } from './supabase';
 const PREFIX = 'bloom:';
 const QUEUE_KEY = PREFIX + 'syncQueue';
 
+// Tombstones for sessions the user has deleted locally but whose remote row
+// hasn't been confirmed-deleted yet. Persisted so the delete survives reloads,
+// offline, transient network errors — anything that would otherwise let the
+// next pullAll() resurrect the row. Drained by pushers.deletedSessions.
+const TOMBSTONE_SESSIONS_KEY = 'deletedSessions';
+
 function loadKV(key, fallback) {
   try {
     const raw = localStorage.getItem(PREFIX + key);
@@ -23,30 +30,24 @@ function loadKV(key, fallback) {
 }
 
 function saveKV(key, value) {
-  try { localStorage.setItem(PREFIX + key, JSON.stringify(value)); } catch {}
-}
-
-async function getUserId() {
-  if (!supabase) return null;
-  const { data } = await supabase.auth.getUser();
-  return data?.user?.id ?? null;
+  try { localStorage.setItem(PREFIX + key, JSON.stringify(value)); } catch {
+    /* localStorage write can fail under strict privacy modes — ignore. */
+  }
 }
 
 // ---------- PULL ----------
 export async function pullAll() {
   if (!isSupabaseConfigured) return;
-  const userId = await getUserId();
-  if (!userId) return;
 
   const [workouts, sessions, customs, chats, kv, wrenChatRows, wrenPrograms, wrenMissed] = await Promise.all([
-    supabase.from('bloom_workouts').select('*').eq('user_id', userId),
-    supabase.from('bloom_sessions').select('*').eq('user_id', userId).order('finished_at', { ascending: false }),
-    supabase.from('bloom_custom_exercises').select('*').eq('user_id', userId),
-    supabase.from('bloom_chat_history').select('*').eq('user_id', userId).order('updated_at', { ascending: false }),
-    supabase.from('bloom_kv').select('*').eq('user_id', userId),
-    supabase.from('wren_chat').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
-    supabase.from('wren_program').select('*').eq('user_id', userId),
-    supabase.from('wren_missed_sessions').select('*').eq('user_id', userId).order('session_date', { ascending: false }),
+    supabase.from('bloom_workouts').select('*'),
+    supabase.from('bloom_sessions').select('*').order('finished_at', { ascending: false }),
+    supabase.from('bloom_custom_exercises').select('*'),
+    supabase.from('bloom_chat_history').select('*').order('updated_at', { ascending: false }),
+    supabase.from('bloom_kv').select('*'),
+    supabase.from('wren_chat').select('*').order('created_at', { ascending: true }),
+    supabase.from('wren_program').select('*'),
+    supabase.from('wren_missed_sessions').select('*').order('session_date', { ascending: false }),
   ]);
 
   if (workouts.data) {
@@ -57,14 +58,20 @@ export async function pullAll() {
   }
 
   if (sessions.data) {
-    saveKV('sessions', sessions.data.map((s) => ({
-      id: s.id,
-      workoutName: s.workout_name,
-      tag: s.tag,
-      exercises: s.exercises || {},
-      durationSec: s.duration_sec || 0,
-      finishedAt: new Date(s.finished_at).getTime(),
-    })));
+    // Filter out rows whose remote delete hasn't yet been confirmed — without
+    // this, a pull that lands before pushers.deletedSessions has succeeded
+    // would resurrect rows the user already removed.
+    const tombstoned = new Set(loadKV(TOMBSTONE_SESSIONS_KEY, []));
+    saveKV('sessions', sessions.data
+      .filter((s) => !tombstoned.has(s.id))
+      .map((s) => ({
+        id: s.id,
+        workoutName: s.workout_name,
+        tag: s.tag,
+        exercises: s.exercises || {},
+        durationSec: s.duration_sec || 0,
+        finishedAt: new Date(s.finished_at).getTime(),
+      })));
   }
 
   if (customs.data) {
@@ -121,15 +128,15 @@ export async function pullAll() {
 // ---------- PUSH ----------
 // Each entity is pushed by re-uploading the *current* localStorage state for
 // that entity. This is dumb but bulletproof for a single-user app — no diffing
-// or conflict resolution required.
+// or conflict resolution required. No user_id column either: tables are
+// single-tenant since the auth layer was removed.
 
 const pushers = {
-  async myWorkouts(userId) {
+  async myWorkouts() {
     const list = loadKV('myWorkouts', []);
     if (!list.length) return;
     const rows = list.map((w) => ({
       id: w.id,
-      user_id: userId,
       name: w.name,
       exercises: w.exercises || [],
       scene: w.scene || null,
@@ -140,18 +147,17 @@ const pushers = {
       updated_at: new Date().toISOString(),
     }));
     // Upsert only — never delete. Real deletions are handled explicitly by
-    // deleteWorkout() (see below) so we can't accidentally wipe rows we
-    // haven't pulled yet.
+    // deleteWorkoutRemote() (see below) so we can't accidentally wipe rows
+    // we haven't pulled yet.
     const { error } = await supabase.from('bloom_workouts').upsert(rows, { onConflict: 'id' });
     if (error) throw error;
   },
 
-  async sessions(userId) {
+  async sessions() {
     const list = loadKV('sessions', []);
     if (!list.length) return;
     const rows = list.map((s) => ({
       id: s.id || crypto.randomUUID(),
-      user_id: userId,
       workout_name: s.workoutName,
       tag: s.tag || null,
       exercises: s.exercises || {},
@@ -164,22 +170,22 @@ const pushers = {
     if (error) throw error;
   },
 
-  async customExercises(userId) {
+  async customExercises() {
     const list = loadKV('customExercises', []);
     if (!list.length) return;
     const rows = list.map((c) => ({
-      id: c.id, user_id: userId, name: c.name, muscle: c.muscle || null,
+      id: c.id, name: c.name, muscle: c.muscle || null,
       rest_sec: c.restSec ?? 90, tips: c.tips || [], video_id: c.videoId || null,
     }));
     const { error } = await supabase.from('bloom_custom_exercises').upsert(rows, { onConflict: 'id' });
     if (error) throw error;
   },
 
-  async chatHistory(userId) {
+  async chatHistory() {
     const list = loadKV('chatHistory', []);
     if (!list.length) return;
     const rows = list.map((c) => ({
-      id: c.id, user_id: userId, title: c.title || null, messages: c.messages || [],
+      id: c.id, title: c.title || null, messages: c.messages || [],
       created_at: c.createdAt ? new Date(c.createdAt).toISOString() : new Date().toISOString(),
       updated_at: c.updatedAt ? new Date(c.updatedAt).toISOString() : new Date().toISOString(),
     }));
@@ -188,11 +194,11 @@ const pushers = {
   },
 
   // ---------- Wren entities ----------
-  async wrenChat(userId) {
+  async wrenChat() {
     const list = loadKV('wrenChat', []);
     if (!list.length) return;
     const rows = list.map((m) => ({
-      id: m.id, user_id: userId, role: m.role, content: m.content,
+      id: m.id, role: m.role, content: m.content,
       context_snapshot: m.context_snapshot || null,
       created_at: m.created_at ? new Date(m.created_at).toISOString() : new Date().toISOString(),
     }));
@@ -200,11 +206,11 @@ const pushers = {
     if (error) throw error;
   },
 
-  async wrenProgram(userId) {
+  async wrenProgram() {
     const list = loadKV('wrenProgram', []);
     if (!list.length) return;
     const rows = list.map((p) => ({
-      id: p.id, user_id: userId, program_json: p.program_json || {},
+      id: p.id, program_json: p.program_json || {},
       active: !!p.active,
       created_at: p.created_at ? new Date(p.created_at).toISOString() : new Date().toISOString(),
     }));
@@ -212,11 +218,11 @@ const pushers = {
     if (error) throw error;
   },
 
-  async wrenMissedSessions(userId) {
+  async wrenMissedSessions() {
     const list = loadKV('wrenMissedSessions', []);
     if (!list.length) return;
     const rows = list.map((m) => ({
-      id: m.id, user_id: userId, session_date: m.session_date, session_type: m.session_type || null,
+      id: m.id, session_date: m.session_date, session_type: m.session_type || null,
       reason_category: m.reason_category || null, reason_text: m.reason_text || null,
       punishment_assigned: !!m.punishment_assigned, punishment_description: m.punishment_description || null,
       created_at: m.created_at ? new Date(m.created_at).toISOString() : new Date().toISOString(),
@@ -225,13 +231,29 @@ const pushers = {
     if (error) throw error;
   },
 
-  // KV-style settings, one per Supabase row.
-  async kv(userId, key) {
+  // Drain the session-delete tombstone list. Runs one bulk delete, then
+  // clears only the ids we just processed (so a tombstone added mid-flight
+  // isn't lost). Re-queued automatically on failure by flushQueue().
+  async deletedSessions() {
+    const ids = loadKV(TOMBSTONE_SESSIONS_KEY, []);
+    if (!ids.length) return;
+    const { error } = await supabase.from('bloom_sessions')
+      .delete()
+      .in('id', ids);
+    if (error) throw error;
+    const processed = new Set(ids);
+    const after = loadKV(TOMBSTONE_SESSIONS_KEY, []);
+    saveKV(TOMBSTONE_SESSIONS_KEY, after.filter((id) => !processed.has(id)));
+  },
+
+  // KV-style settings, one per Supabase row. PK is just `key` after the
+  // single-user migration, so no user_id in the payload.
+  async kv(key) {
     const value = loadKV(key, null);
     if (value === null || value === undefined) return;
     const { error } = await supabase.from('bloom_kv').upsert(
-      [{ user_id: userId, key, value, updated_at: new Date().toISOString() }],
-      { onConflict: 'user_id,key' }
+      [{ key, value, updated_at: new Date().toISOString() }],
+      { onConflict: 'key' }
     );
     if (error) throw error;
   },
@@ -259,34 +281,38 @@ export function queue(entity, kvKey) {
 // instead of relying on the pusher to diff local vs remote.
 export async function deleteWorkoutRemote(id) {
   if (!isSupabaseConfigured) return;
-  const userId = await getUserId();
-  if (!userId) return;
-  await supabase.from('bloom_workouts').delete().eq('user_id', userId).eq('id', id);
+  await supabase.from('bloom_workouts').delete().eq('id', id);
 }
 export async function deleteSessionRemote(id) {
   if (!isSupabaseConfigured || !id) return;
-  const userId = await getUserId();
-  if (!userId) return;
-  await supabase.from('bloom_sessions').delete().eq('user_id', userId).eq('id', id);
+  await supabase.from('bloom_sessions').delete().eq('id', id);
 }
 export async function deleteCustomExerciseRemote(id) {
   if (!isSupabaseConfigured) return;
-  const userId = await getUserId();
-  if (!userId) return;
-  await supabase.from('bloom_custom_exercises').delete().eq('user_id', userId).eq('id', id);
+  await supabase.from('bloom_custom_exercises').delete().eq('id', id);
 }
 export async function deleteChatRemote(id) {
   if (!isSupabaseConfigured) return;
-  const userId = await getUserId();
-  if (!userId) return;
-  await supabase.from('bloom_chat_history').delete().eq('user_id', userId).eq('id', id);
+  await supabase.from('bloom_chat_history').delete().eq('id', id);
+}
+
+// Durable session delete: parks the id in a tombstone list, then enqueues a
+// flush. Replaces the previous fire-and-forget deleteSessionRemote() pattern,
+// which silently failed offline and let pullAll() resurrect the row on next
+// boot. Idempotent — calling twice with the same id is a no-op the second
+// time.
+export function tombstoneSession(id) {
+  if (!id || !isSupabaseConfigured) return;
+  const list = loadKV(TOMBSTONE_SESSIONS_KEY, []);
+  if (list.includes(id)) return;
+  list.push(id);
+  saveKV(TOMBSTONE_SESSIONS_KEY, list);
+  queue('deletedSessions');
 }
 
 let flushing = false;
 export async function flushQueue() {
   if (flushing || !isSupabaseConfigured || !navigator.onLine) return;
-  const userId = await getUserId();
-  if (!userId) return;
   flushing = true;
   try {
     while (true) {
@@ -295,9 +321,9 @@ export async function flushQueue() {
       const job = q[0];
       try {
         if (job.entity === 'kv') {
-          await pushers.kv(userId, job.kvKey);
+          await pushers.kv(job.kvKey);
         } else if (pushers[job.entity]) {
-          await pushers[job.entity](userId);
+          await pushers[job.entity]();
         }
         // Pop on success.
         const fresh = loadKV('syncQueue', []);
@@ -321,4 +347,4 @@ if (typeof window !== 'undefined') {
   window.addEventListener('focus', () => flushQueue());
 }
 
-export { KV_KEYS };
+export { KV_KEYS, QUEUE_KEY };
