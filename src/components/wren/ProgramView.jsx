@@ -138,10 +138,20 @@ export default function ProgramView() {
   const weekIdx = Math.min(Math.max(0, currentWeek - 1), program.weeks.length - 1);
   const currentWeekData = program.weeks[weekIdx];
   const scheduledThisWeek = currentWeekData?.sessions?.length || 0;
+  // Count UNIQUE session labels (A/B/C) — counting raw records would
+  // double-count duplicate logs and inflate the "X of N" tile (TodayView
+  // has the same fix).
   const sessionsThisWeek = (() => {
     if (!startDate || !hasStarted) return 0;
     const weekStart = startDate.getTime() + (currentWeek - 1) * 7 * 86400000;
-    return sessionsLog.filter(s => Number(s.finishedAt) >= weekStart).length;
+    const labels = new Set();
+    for (const s of sessionsLog) {
+      if (Number(s.finishedAt) < weekStart) continue;
+      if ((s.workoutName || '').includes('(past entry)')) continue;
+      const m = /^Session\s+([A-Za-z])/.exec(s.workoutName || '');
+      if (m) labels.add(m[1].toUpperCase());
+    }
+    return labels.size;
   })();
   // Progress %: clamp to [0, 100], based on currentWeek / total.
   const progressPct = hasStarted

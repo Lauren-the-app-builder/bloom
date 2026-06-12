@@ -5,7 +5,7 @@ import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isS
 import { computeActiveNudge, markTriggerSeen } from './wrenTriggers';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 
-const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Sunday'];
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 const SESSION_COLORS = {
   A: { gradient: 'linear-gradient(160deg, #C8B4E8 0%, #F4B8D4 50%, #FFD3B8 100%)', shadow: 'rgba(200,180,232,0.35)' },
@@ -123,18 +123,23 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
 
   const allSessions = currentWeekData?.sessions || [];
 
-  // Count sessions logged since the start of the current PROGRAM week (not
-  // calendar week). Before the program starts this is 0. The program is
-  // week-aligned to startDate (May 25, a Monday), so program week N begins at
-  // startDate + (N-1) * 7 days.
+  // Count UNIQUE session labels logged since the start of the current PROGRAM
+  // week (not calendar week). Counting raw records would double-count if she
+  // logged the same Session X twice, or include a non-program one-off workout
+  // that doesn't have an A/B/C label — both inflated this number above what
+  // the day-tiles below actually showed as done. Mirrors the doneLabels logic.
   // (sessionsBump above forces a re-render after a workout completes.)
   const sessionsThisWeek = (() => {
     if (!startDate || !hasStarted) return 0;
     const weekStart = startDate.getTime() + (currentWeek - 1) * 7 * 86400000;
-    return getSessions().filter(s =>
-      Number(s.finishedAt) >= weekStart &&
-      !(s.workoutName || '').includes('(past entry)')
-    ).length;
+    const labels = new Set();
+    for (const s of getSessions()) {
+      if (Number(s.finishedAt) < weekStart) continue;
+      if ((s.workoutName || '').includes('(past entry)')) continue;
+      const m = /^Session\s+([A-Za-z])/.exec(s.workoutName || '');
+      if (m) labels.add(m[1].toUpperCase());
+    }
+    return labels.size;
   })();
 
   // Active Wren-initiated nudge, if any. We bump nudgeBump after dismiss

@@ -14,11 +14,14 @@ do $$
 declare
   t          text;
   kind       text;
+  -- bloom_custom_exercises is intentionally NOT listed — the table doesn't
+  -- exist in this project and custom exercises stay local-only (sync.js
+  -- skips them). The to_regclass guard below would catch a missing table
+  -- anyway, but dropping it from the list keeps the SQL flat-out simple.
   tables     text[] := array[
     'bloom_workouts',
     'bloom_sessions',
     'bloom_chat_history',
-    'bloom_custom_exercises',
     'bloom_kv',
     'wren_program',
     'wren_chat',
