@@ -154,8 +154,43 @@ export function deloadSets(baseSets) {
 
 // Set count for an exercise in a given week, accounting for deload.
 export function setsForExercise(name, isDeload) {
-  const base = canonicalSetsFor(name);
+  // Wren-set per-exercise overrides take precedence over canonicalSetsFor;
+  // deload reduction still applies on top.
+  const override = getSetsOverride(name);
+  const base = override ?? canonicalSetsFor(name);
   return isDeload ? deloadSets(base) : base;
+}
+
+// ---------- Wren-controlled sets overrides ----------
+// { [exerciseName]: positiveInt } map. Lets Wren change set counts per
+// exercise without hard-coding new patterns in canonicalSetsFor. Stored as
+// a single KV (wrenSetsOverrides) so it rides the existing KV sync.
+const SETS_OVERRIDES_KEY = 'wrenSetsOverrides';
+
+export function getSetsOverrides() {
+  const v = load(SETS_OVERRIDES_KEY, {});
+  return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+}
+
+export function getSetsOverride(name) {
+  const v = getSetsOverrides()[name];
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+export function setSetsOverride(name, sets) {
+  const n = Number(sets);
+  if (!name || !Number.isFinite(n) || n <= 0) return;
+  const next = { ...getSetsOverrides(), [name]: n };
+  save(SETS_OVERRIDES_KEY, next);
+}
+
+export function clearSetsOverride(name) {
+  const overrides = getSetsOverrides();
+  if (!(name in overrides)) return;
+  const next = { ...overrides };
+  delete next[name];
+  save(SETS_OVERRIDES_KEY, next);
 }
 
 // ---------- Deload weeks ----------
@@ -475,12 +510,25 @@ export function setProgramSchedule(dayByLabel, { confirmFor = 'current' } = {}) 
 // Apply a single in-place edit to one session (by label) across every week of
 // the active program — so Wren can tweak workouts without rebuilding all 12
 // weeks. `op` supports exactly one operation:
-//   { session_label, swap_from, swap_to }      — replace an exercise
-//   { session_label, add_exercise, reps }       — add an exercise
-//   { session_label, remove_exercise }          — remove an exercise
-//   { session_label, exercise, reps }            — change an exercise's reps
+//   { session_label, swap_from, swap_to }       — replace an exercise
+//   { session_label, add_exercise, reps, sets }  — add an exercise
+//   { session_label, remove_exercise }            — remove an exercise
+//   { session_label, exercise, reps }             — change an exercise's reps
+//   { session_label, exercise, sets }             — change an exercise's sets
+// (sets may be combined with reps on the same op.)
 export function editProgramSession(op) {
   if (!op || !op.session_label) return null;
+
+  // Side-effects on the sets-overrides bag. Done up front so a swap/remove
+  // can't leave a stale override pointing at an exercise that no longer
+  // exists in any session, and so a new `sets` value lands even when no
+  // structural program change is needed (sets-only edit).
+  const setsNum = Number(op.sets);
+  const hasSets = Number.isFinite(setsNum) && setsNum > 0;
+  if (op.swap_from) clearSetsOverride(op.swap_from);
+  if (op.remove_exercise) clearSetsOverride(op.remove_exercise);
+  if (hasSets && op.exercise) setSetsOverride(op.exercise, setsNum);
+  if (hasSets && op.add_exercise) setSetsOverride(op.add_exercise, setsNum);
   const list = load('wrenProgram', []);
   const idx = list.findIndex(p => p.active);
   if (idx === -1) return null;

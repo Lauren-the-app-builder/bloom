@@ -193,6 +193,7 @@ DO NOT generate the program yet. Just introduce yourself and ask if she has anyt
               remove_exercise: action.remove_exercise,
               exercise: action.exercise,
               reps: action.reps,
+              sets: action.sets,
             });
           }
         }

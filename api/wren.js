@@ -172,7 +172,7 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
 
 2. Only use generate_program when creating the FULL 12-week program from scratch (during onboarding or when Lauren asks for a complete rebuild). The program must include ALL 12 weeks, each with sessions and exercises.
 
-3. For SMALL changes (swap an exercise, add or remove an exercise, change a rep target): do NOT regenerate the entire program. Confirm the change with Lauren in plain text first — e.g. "Want me to swap cable rows for chest-supported rows in Session B?" — and once she says yes, apply it with one or more edit_workout actions. Each edit_workout action does ONE thing to ONE session: replace an exercise (swap_from + swap_to), add an exercise (add_exercise + optional reps), remove an exercise (remove_exercise), or change a rep target (exercise + reps). Saying you'll change it in text does NOT update the app — you MUST emit the edit_workout action(s). The change applies across all 12 weeks automatically.
+3. For SMALL changes (swap an exercise, add or remove an exercise, change a rep target, change the number of sets): do NOT regenerate the entire program. Confirm the change with Lauren in plain text first — e.g. "Want me to swap cable rows for chest-supported rows in Session B?" or "Want me to bump lateral raises from 2 to 4 sets?" — and once she says yes, apply it with one or more edit_workout actions. Each edit_workout action does ONE thing to ONE session: replace an exercise (swap_from + swap_to), add an exercise (add_exercise + optional reps + optional sets), remove an exercise (remove_exercise), change a rep target (exercise + reps), or change the set count (exercise + sets). You can combine reps and sets on the same edit (exercise + reps + sets) when changing both. Saying you'll change it in text does NOT update the app — you MUST emit the edit_workout action(s). The change applies across all 12 weeks automatically.
 
 4. When you DO regenerate, include the COMPLETE 12-week program — all weeks, all sessions, all exercises with sets, reps, and target weights. Never send a partial program.
 
@@ -240,7 +240,7 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
                 type: { type: 'string', description: 'Action type. Program/chat scope: generate_program, assign_punishment, flag_plateau, set_schedule, edit_workout, apply_deload, remove_deload, remember (save a long-term fact about Lauren), forget_note (drop one). Live-workout scope (only valid when the user message says it is mid-workout): set_target_weight, set_target (rep target), set_rest, add_set, add_exercise, remove_exercise, reorder.' },
                 program: { type: 'object', description: 'For generate_program: the full program object with weeks array' },
                 description: { type: 'string', description: 'For assign_punishment: the punishment description' },
-                exercise: { type: 'string', description: 'For flag_plateau: the exercise name. For edit_workout: the exercise whose reps you are changing (pair with reps).' },
+                exercise: { type: 'string', description: 'For flag_plateau: the exercise name. For edit_workout: the exercise whose reps and/or sets you are changing (pair with reps and/or sets).' },
                 suggestion: { type: 'string', description: 'For flag_plateau: the suggestion' },
                 session_label: { type: 'string', description: 'For edit_workout: which session to edit — "A", "B", or "C".' },
                 swap_from: { type: 'string', description: 'For edit_workout: exercise name to replace.' },
@@ -252,7 +252,7 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
                 week_number: { type: 'number', description: 'For apply_deload or remove_deload: which program week (1-12) to mark as a deload or un-mark.' },
                 fact: { type: 'string', description: 'For remember: a concise first-person statement to store about Lauren long-term (e.g. "Left shoulder pops on incline press but is fine.", "Hates cable rows.", "Prefers Tuesday over Monday for Session A."). Keep it short, factual, and useful for future sessions.' },
                 seconds: { type: 'number', description: 'For live-workout set_rest: rest time in seconds for this exercise.' },
-                sets: { type: 'number', description: 'For live-workout add_exercise: number of sets to add (default 3).' },
+                sets: { type: 'number', description: 'For edit_workout: new set count for an exercise. Pair with exercise to change an existing one, with add_exercise to set the new exercise\'s sets, or send on its own with exercise to leave reps alone. Applies across all 12 weeks. For live-workout add_exercise: number of sets to add (default 3).' },
                 order: { type: 'array', items: { type: 'string' }, description: 'For live-workout reorder: list of exercise names in the desired new order.' },
                 assignments: {
                   type: 'array',
