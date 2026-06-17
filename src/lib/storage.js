@@ -281,6 +281,22 @@ export function setCalorieGoal(kcal) {
   save('nourishCalorieGoal', n);
 }
 
+// Nutrition phase: 'cut' | 'maintain' (or null if she hasn't picked yet).
+// Lives next to the calorie goal because the two are read together — Wren
+// interprets the same weight trend differently depending on whether Lauren
+// is trying to lose weight or hold it. Anything other than the two valid
+// values is normalized to null.
+const PHASES = new Set(['cut', 'maintain']);
+export function getNourishPhase() {
+  const v = load('nourishPhase', null);
+  return PHASES.has(v) ? v : null;
+}
+export function setNourishPhase(phase) {
+  if (phase === null) { save('nourishPhase', null); return; }
+  if (!PHASES.has(phase)) return;
+  save('nourishPhase', phase);
+}
+
 // Weight log: append-only-ish array of { ts, weight } sorted by ts ascending.
 // Same-day entries: the UI prompts before overwriting, but the store happily
 // accepts either path — replaceForDate(ts) collapses same-calendar-day rows,

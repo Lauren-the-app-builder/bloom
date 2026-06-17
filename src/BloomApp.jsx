@@ -1986,6 +1986,32 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
     );
   };
 
+  // Per-exercise notes card. Reused between the single-exercise path and
+  // each exercise inside a superset so the affordance is identical in both
+  // places. Returns the saved-note card or the "Add a note" dashed button.
+  const renderNoteCard = (ex) => {
+    if (exerciseNotes[ex.name]) {
+      return (
+        <div style={{ background: c.white, borderRadius: 12, padding: "10px 12px", border: `1px solid ${c.line}`, borderLeft: `3px solid ${c.rosedeep}`, display: "flex", gap: 8, alignItems: "flex-start" }}>
+          <Pencil size={12} color={c.rosedeep} style={{ flexShrink: 0, marginTop: 3 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: c.rosedeep, margin: 0, letterSpacing: 0.5 }}>NOTE</p>
+            <p style={{ fontSize: 12, color: c.charcoal, margin: "2px 0 0", lineHeight: 1.4, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{exerciseNotes[ex.name]}</p>
+          </div>
+          <div style={{ display: "flex", gap: 4 }}>
+            <button onClick={() => openNote(ex.name)} style={{ background: "none", border: "none", cursor: "pointer", color: c.muted, padding: 2 }} title="Edit note"><Pencil size={13} /></button>
+            <button onClick={() => removeNote(ex.name)} style={{ background: "none", border: "none", cursor: "pointer", color: c.muted, padding: 2 }} title="Remove note"><X size={14} /></button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <button onClick={() => openNote(ex.name)} style={{ width: "100%", background: "none", border: `1px dashed ${c.line}`, borderRadius: 12, padding: "8px 12px", color: c.muted, fontSize: 12, fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit" }}>
+        <Pencil size={12} /> Add a note
+      </button>
+    );
+  };
+
   return (
     <div style={{ position: "fixed", inset: 0, background: c.cream, zIndex: 100, overflowY: "auto", maxWidth: 430, margin: "0 auto" }}>
       {/* sticky header with timer */}
@@ -2074,11 +2100,12 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
                   <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12, marginTop: 4 }}>
                     {exs.map((ex, idx) => {
                       const exData = allExercises.find(e => e.name === ex.name);
-                      // Per-exercise rec card — same component the
-                      // single-exercise path uses. Null for bands.
+                      // Per-exercise rec + note cards — same components the
+                      // single-exercise path uses. rec is null for bands.
                       const rec = renderRecCard(ex);
+                      const note = renderNoteCard(ex);
                       return (
-                        <div key={idx} style={{ display: "flex", flexDirection: "column", gap: rec ? 6 : 0 }}>
+                        <div key={idx} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
                             <div style={{ minWidth: 0, flex: 1 }}>
                               <p style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>{String.fromCharCode(65 + idx)} · {ex.name}</p>
@@ -2088,6 +2115,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
                             </div>
                           </div>
                           {rec}
+                          {note}
                         </div>
                       );
                     })}
@@ -2180,23 +2208,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
               })()}
 
               {/* note */}
-              {exerciseNotes[ex.name] ? (
-                <div style={{ background: c.white, borderRadius: 12, padding: "10px 12px", marginBottom: 12, border: `1px solid ${c.line}`, borderLeft: `3px solid ${c.rosedeep}`, display: "flex", gap: 8, alignItems: "flex-start" }}>
-                  <Pencil size={12} color={c.rosedeep} style={{ flexShrink: 0, marginTop: 3 }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: 10, fontWeight: 700, color: c.rosedeep, margin: 0, letterSpacing: 0.5 }}>NOTE</p>
-                    <p style={{ fontSize: 12, color: c.charcoal, margin: "2px 0 0", lineHeight: 1.4, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{exerciseNotes[ex.name]}</p>
-                  </div>
-                  <div style={{ display: "flex", gap: 4 }}>
-                    <button onClick={() => openNote(ex.name)} style={{ background: "none", border: "none", cursor: "pointer", color: c.muted, padding: 2 }} title="Edit note"><Pencil size={13} /></button>
-                    <button onClick={() => removeNote(ex.name)} style={{ background: "none", border: "none", cursor: "pointer", color: c.muted, padding: 2 }} title="Remove note"><X size={14} /></button>
-                  </div>
-                </div>
-              ) : (
-                <button onClick={() => openNote(ex.name)} style={{ width: "100%", background: "none", border: `1px dashed ${c.line}`, borderRadius: 12, padding: "8px 12px", marginBottom: 12, color: c.muted, fontSize: 12, fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                  <Pencil size={12} /> Add a note
-                </button>
-              )}
+              <div style={{ marginBottom: 12 }}>{renderNoteCard(ex)}</div>
 
               <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 1fr 1fr 36px", gap: 8, fontSize: 10, color: c.muted, marginBottom: 6, letterSpacing: 0.5 }}>
                 <span>SET</span>

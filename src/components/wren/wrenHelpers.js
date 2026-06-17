@@ -1,6 +1,6 @@
 // Pure utility functions for the Wren coaching system.
 
-import { load, isDeloadWeek, getDeloadWeeks, getWrenNotes, getCalorieGoal, getCurrentWeight, getWeeklyAvgWeight, getWeightChange, getWeightLog } from '../../lib/storage';
+import { load, isDeloadWeek, getDeloadWeeks, getWrenNotes, getCalorieGoal, getCurrentWeight, getWeeklyAvgWeight, getWeightChange, getWeightLog, getNourishPhase } from '../../lib/storage';
 import { comboKey, comboLabel } from './tokens';
 
 // ---------- Plateau detection ----------
@@ -261,6 +261,9 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
       const cur = getCurrentWeight();
       const log = getWeightLog();
       return {
+        // phase: 'cut' | 'maintain' | null. Frames how Wren reads the weight
+        // trend — flat weekly avg means "good" on maintain but "stalled" on cut.
+        phase: getNourishPhase(),
         calorie_goal: getCalorieGoal() || null,
         weight_unit: 'lbs',
         weight_current: cur ? {

@@ -9,6 +9,8 @@ import { c } from './tokens';
 import {
   getCalorieGoal,
   setCalorieGoal,
+  getNourishPhase,
+  setNourishPhase,
   getWeightLog,
   getCurrentWeight,
   getWeeklyAvgWeight,
@@ -54,6 +56,7 @@ export default function NourishView({ onOpenSettings }) {
   const refresh = () => setBump((b) => b + 1);
 
   const goal = getCalorieGoal();
+  const phase = getNourishPhase();
   const current = getCurrentWeight();
   const weeklyAvg = getWeeklyAvgWeight();
   const log = getWeightLog();
@@ -278,6 +281,38 @@ export default function NourishView({ onOpenSettings }) {
             </button>
           )}
           <p style={cardLabel}>Calorie goal</p>
+
+          {/* Phase toggle — frames how Wren reads the weight trend. Tapping
+              the already-selected option clears it (so Lauren can return to
+              "no phase set" without an Other choice). */}
+          <div style={{
+            display: 'flex', gap: 4, background: N.tileBg,
+            borderRadius: 10, padding: 3, marginBottom: 14,
+          }}>
+            {[
+              { id: 'cut', label: 'Cut' },
+              { id: 'maintain', label: 'Maintain' },
+            ].map((opt) => {
+              const active = phase === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => { setNourishPhase(active ? null : opt.id); refresh(); }}
+                  style={{
+                    flex: 1, padding: '6px 10px', borderRadius: 8,
+                    border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                    fontSize: 12, fontWeight: 600,
+                    background: active ? c.rosedeep : 'transparent',
+                    color: active ? '#fff' : N.darkText,
+                  }}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
             <span style={bigNumber}>{goal > 0 ? goal.toLocaleString() : '—'}</span>
             <span style={bigUnit}>kcal / day</span>
