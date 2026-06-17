@@ -4,7 +4,7 @@
 // before overwriting.
 
 import React, { useState } from 'react';
-import { Settings, Sparkles } from 'lucide-react';
+import { Settings, Sparkles, Pencil, X } from 'lucide-react';
 import { c } from './tokens';
 import {
   getCalorieGoal,
@@ -61,8 +61,11 @@ export default function NourishView({ onOpenSettings }) {
   const weeklyChange = getWeightChange('weekly');
   const monthlyChange = getWeightChange('monthly');
 
-  // Local drafts for the two input rows.
+  // Local drafts for the two input rows. The calorie-goal input only shows
+  // when editingGoal is true (tap the pencil); the weight-log input is
+  // always visible because it's a daily action.
   const [goalDraft, setGoalDraft] = useState('');
+  const [editingGoal, setEditingGoal] = useState(false);
   const [weightDraft, setWeightDraft] = useState('');
   const [changeTab, setChangeTab] = useState('daily');
 
@@ -94,7 +97,18 @@ export default function NourishView({ onOpenSettings }) {
     if (!Number.isFinite(n) || n <= 0) return;
     setCalorieGoal(n);
     setGoalDraft('');
+    setEditingGoal(false);
     refresh();
+  };
+  // Opening the editor preloads the current goal so editing feels like
+  // tweaking a number, not retyping from scratch.
+  const startEditingGoal = () => {
+    setGoalDraft(goal > 0 ? String(goal) : '');
+    setEditingGoal(true);
+  };
+  const cancelEditingGoal = () => {
+    setGoalDraft('');
+    setEditingGoal(false);
   };
 
   const logToday = () => {
@@ -243,32 +257,70 @@ export default function NourishView({ onOpenSettings }) {
           gaps between cards continue to show the gradient/sunset blend. */}
       <div style={{ padding: '0 16px 16px', position: 'relative', zIndex: 1 }}>
         {/* Calorie goal card — pulled up so it overlaps the header slightly,
-            matching the mockup's first-card negative margin. */}
-        <div style={{ ...cardStyle, marginTop: -16 }}>
+            matching the mockup's first-card negative margin. Edit affordance
+            is a small pencil chip in the top-right corner so the card reads
+            as the goal first, the editor second. */}
+        <div style={{ ...cardStyle, marginTop: -16, position: 'relative' }}>
+          {!editingGoal && (
+            <button
+              type="button"
+              onClick={startEditingGoal}
+              aria-label="Edit calorie goal"
+              style={{
+                position: 'absolute', top: 14, right: 14,
+                width: 28, height: 28, borderRadius: '50%',
+                background: N.tileBg, border: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: 0,
+              }}
+            >
+              <Pencil size={13} color={c.rosedeep} strokeWidth={2} />
+            </button>
+          )}
           <p style={cardLabel}>Calorie goal</p>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
             <span style={bigNumber}>{goal > 0 ? goal.toLocaleString() : '—'}</span>
             <span style={bigUnit}>kcal / day</span>
           </div>
-          <p style={helperText}>What you're aiming to eat each day</p>
-          <hr style={{ ...divider, marginTop: 0 }} />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              type="number"
-              inputMode="numeric"
-              placeholder="Update goal…"
-              value={goalDraft}
-              onChange={(e) => setGoalDraft(e.target.value)}
-              style={inputStyle}
-            />
-            <button
-              onClick={saveGoal}
-              disabled={!goalDraft || Number(goalDraft) <= 0}
-              style={{ ...saveBtnStyle, opacity: !goalDraft || Number(goalDraft) <= 0 ? 0.55 : 1 }}
-            >
-              Save
-            </button>
-          </div>
+          <p style={{ ...helperText, marginBottom: editingGoal ? 14 : 0 }}>
+            What you're aiming to eat each day
+          </p>
+          {editingGoal && (
+            <>
+              <hr style={{ ...divider, marginTop: 0 }} />
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="Update goal…"
+                  value={goalDraft}
+                  onChange={(e) => setGoalDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveGoal(); if (e.key === 'Escape') cancelEditingGoal(); }}
+                  autoFocus
+                  style={inputStyle}
+                />
+                <button
+                  onClick={saveGoal}
+                  disabled={!goalDraft || Number(goalDraft) <= 0}
+                  style={{ ...saveBtnStyle, opacity: !goalDraft || Number(goalDraft) <= 0 ? 0.55 : 1 }}
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelEditingGoal}
+                  aria-label="Cancel"
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    padding: 6, display: 'flex', alignItems: 'center',
+                    flexShrink: 0, color: N.mutedText,
+                  }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Weight log card */}
