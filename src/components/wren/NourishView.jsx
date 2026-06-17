@@ -20,7 +20,9 @@ import {
 
 // Mockup-specific accents — pinker tones than the global tokens so this
 // screen reads as its own "Nourish" surface without clashing with the rest
-// of the app. Kept local to this file.
+// of the app. Kept local to this file. pageBg/headerBg are no longer used
+// for actual surface fills — the sunset hero + Today's gradient handle
+// that — but we leave the tokens in case future light surfaces want them.
 const N = {
   pageBg: '#FBF4FA',
   headerBg: '#F5E8F2',
@@ -29,6 +31,18 @@ const N = {
   darkText: '#2E1A2E',
   mutedText: '#A07898',
   hintText: '#C0A0BA',
+};
+
+// Sunset hero config — mirrors TodayView's SUNSET_LIKE values so the two
+// screens share an identical hero treatment.
+const HERO = {
+  src: '/sunset.png',
+  size: '140% auto',
+  position: 'top center',
+  // Fully opaque for the top 36%, fading to transparent by 60%. Matches
+  // TodayView so the sunset dissolves into the page gradient with no seam.
+  mask: 'linear-gradient(#000 0%, #000 36%, transparent 60%)',
+  height: 720,
 };
 
 export default function NourishView({ onOpenSettings }) {
@@ -168,13 +182,40 @@ export default function NourishView({ onOpenSettings }) {
   return (
     <div style={{
       flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch',
-      background: N.pageBg,
+      position: 'relative',
+      // Page gradient picks up where the sunset's flowers fade and continues
+      // down behind the cards, matching TodayView so the two screens feel
+      // like siblings.
+      background: 'linear-gradient(180deg, #E5C8D9 0%, #DCB8CE 22%, #D0A8C5 42%, #C9A4C5 58%, #D8B7CF 75%, #ECCFD8 90%, #F8E8E2 100%)',
     }}>
-      {/* Header */}
-      <div style={{ background: N.headerBg, padding: '52px 24px 32px' }}>
+      {/* Sunset hero — same dimensions, mask, and pastel treatment as
+          TodayView so Nourish sits visually next to Today. The mask makes
+          the image fade out by ~60% of its height, dissolving into the
+          page gradient. The header text + cards sit above it via z-index. */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute', top: 0, left: 0, right: 0, height: HERO.height,
+          backgroundImage: `url(${HERO.src})`,
+          backgroundSize: HERO.size,
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: HERO.position,
+          filter: 'saturate(0.78) brightness(1.05)',
+          maskImage: HERO.mask,
+          WebkitMaskImage: HERO.mask,
+          pointerEvents: 'none',
+          zIndex: 0,
+        }}
+      />
+
+      {/* Header — transparent background so the sunset shows through. Date
+          + title colors are already dark/pink and sit over the bright sky
+          area of the sunset; the gear button gets a translucent-white chip
+          so it stays tappable wherever the sunset color lands. */}
+      <div style={{ padding: '52px 24px 32px', position: 'relative', zIndex: 1 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <p style={{ fontSize: 12, color: c.rosedeep, margin: '0 0 4px' }}>{headerDate}</p>
+            <p style={{ fontSize: 12, color: c.rosedeep, margin: '0 0 4px', fontWeight: 600 }}>{headerDate}</p>
             <h1 style={{ fontSize: 26, fontWeight: 600, color: N.darkText, margin: 0 }}>Nourish</h1>
           </div>
           {onOpenSettings && (
@@ -182,18 +223,25 @@ export default function NourishView({ onOpenSettings }) {
               onClick={onOpenSettings}
               aria-label="Settings"
               style={{
-                background: 'none', border: 'none', cursor: 'pointer',
-                padding: 0, marginTop: 4, color: c.rosedeep,
+                width: 36, height: 36, borderRadius: '50%',
+                background: 'rgba(255,255,255,0.85)',
+                border: '1px solid rgba(255,255,255,0.7)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', backdropFilter: 'blur(8px)',
+                WebkitBackdropFilter: 'blur(8px)',
+                boxShadow: '0 2px 10px rgba(120,80,140,0.18)',
               }}
             >
-              <Settings size={20} strokeWidth={1.5} />
+              <Settings size={14} color={c.charcoal} />
             </button>
           )}
         </div>
       </div>
 
-      {/* Content */}
-      <div style={{ padding: '0 16px 16px' }}>
+      {/* Content — sits above the sunset via z-index so the cards' opaque
+          white surfaces block the hero from showing through them, while the
+          gaps between cards continue to show the gradient/sunset blend. */}
+      <div style={{ padding: '0 16px 16px', position: 'relative', zIndex: 1 }}>
         {/* Calorie goal card — pulled up so it overlaps the header slightly,
             matching the mockup's first-card negative margin. */}
         <div style={{ ...cardStyle, marginTop: -16 }}>
