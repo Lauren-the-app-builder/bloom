@@ -96,6 +96,22 @@ export async function pullAll() {
     }
   }
 
+  // One-time wrenNotes backfill — wrenNotes joined KV_KEYS after the
+  // store had already been writing it local-only for a while, so the
+  // first sync needs to seed it. If local has notes and the server
+  // didn't return any, park a push job directly in the queue. We can't
+  // use queue() here because pullAll runs while suppressPushes is true;
+  // App.jsx releases the suppression ~250ms after we finish, then calls
+  // flushQueue() which drains this job. Subsequent saves go through the
+  // normal queue() path.
+  const serverHasWrenNotes = (kv.data || []).some((row) => row.key === 'wrenNotes');
+  const localWrenNotes = loadKV('wrenNotes', null);
+  if (!serverHasWrenNotes && Array.isArray(localWrenNotes) && localWrenNotes.length) {
+    const q = loadKV('syncQueue', []);
+    q.push({ entity: 'kv', kvKey: 'wrenNotes', at: Date.now() });
+    saveKV('syncQueue', q);
+  }
+
   // Wren chat messages
   if (wrenChatRows.data) {
     saveKV('wrenChat', wrenChatRows.data.map((m) => ({
@@ -257,7 +273,7 @@ const pushers = {
   },
 };
 
-const KV_KEYS = ['schedule', 'lastSessions', 'coachContext', 'unit', 'exerciseNotes', 'focusLiftName', 'wrenSetsOverrides', 'nourishCalorieGoal', 'nourishWeightLog', 'nourishPhase'];
+const KV_KEYS = ['schedule', 'lastSessions', 'coachContext', 'unit', 'exerciseNotes', 'focusLiftName', 'wrenSetsOverrides', 'nourishCalorieGoal', 'nourishWeightLog', 'nourishPhase', 'wrenNotes'];
 
 // While pulling, suppress queue() so the initial render's save() effects
 // don't immediately push stale localStorage data back to Supabase.
