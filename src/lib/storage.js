@@ -510,11 +510,14 @@ export function setProgramSchedule(dayByLabel, { confirmFor = 'current' } = {}) 
 // Apply a single in-place edit to one session (by label) across every week of
 // the active program — so Wren can tweak workouts without rebuilding all 12
 // weeks. `op` supports exactly one operation:
-//   { session_label, swap_from, swap_to }       — replace an exercise
-//   { session_label, add_exercise, reps, sets }  — add an exercise
-//   { session_label, remove_exercise }            — remove an exercise
-//   { session_label, exercise, reps }             — change an exercise's reps
-//   { session_label, exercise, sets }             — change an exercise's sets
+//   { session_label, swap_from, swap_to }              — replace an exercise
+//   { session_label, add_exercise, reps, sets }         — add an exercise
+//   { session_label, remove_exercise }                   — remove an exercise
+//   { session_label, exercise, reps }                    — change an exercise's reps
+//   { session_label, exercise, sets }                    — change an exercise's sets
+//   { session_label, superset_a, superset_b }            — link two exercises as a superset
+//   { session_label, unlink_superset }                   — break any superset link involving this exercise
+//   { session_label, order: [...exerciseNames] }         — reorder exercises in the session
 // (sets may be combined with reps on the same op.)
 export function editProgramSession(op) {
   if (!op || !op.session_label) return null;
@@ -558,6 +561,55 @@ export function editProgramSession(op) {
     }
     if (op.add_exercise && !next.some(e => e.name === op.add_exercise)) {
       next.push({ name: op.add_exercise, reps: String(op.reps || '10') });
+    }
+    // Link two exercises as a superset. TodayView reads superset_with
+    // bidirectionally — setting it on one of the pair is enough. We point
+    // the later-listed exercise at the earlier one so the order in the UI
+    // mirrors the program order. Both names must already exist in this
+    // session; missing names mean the op is a no-op (logged silently).
+    if (op.superset_a && op.superset_b && op.superset_a !== op.superset_b) {
+      const aIdx = next.findIndex(e => e.name === op.superset_a);
+      const bIdx = next.findIndex(e => e.name === op.superset_b);
+      if (aIdx !== -1 && bIdx !== -1) {
+        // Clear any pre-existing link on the partner so we don't leave
+        // dangling pointers to a third exercise.
+        const [firstIdx, secondIdx] = aIdx <= bIdx ? [aIdx, bIdx] : [bIdx, aIdx];
+        next = next.map((e, i) => {
+          if (i === firstIdx) return { ...e, superset_with: undefined };
+          if (i === secondIdx) return { ...e, superset_with: next[firstIdx].name };
+          return e;
+        });
+      }
+    }
+    // Unlink: clear superset_with on the target itself AND on any other
+    // exercise pointing at it. Idempotent — nothing happens if no link exists.
+    if (op.unlink_superset) {
+      next = next.map(e => {
+        if (e.name === op.unlink_superset || e.superset_with === op.unlink_superset) {
+          return { ...e, superset_with: undefined };
+        }
+        return e;
+      });
+    }
+    // Reorder by exercise name. Only applies when the order array is a
+    // perfect permutation of the current session's exercises — otherwise
+    // we'd silently drop or duplicate exercises. Anything missing from
+    // the order is appended at the end in its original relative order so
+    // a typo can't strip lifts from the program.
+    if (Array.isArray(op.order) && op.order.length) {
+      const byName = new Map(next.map(e => [e.name, e]));
+      const seen = new Set();
+      const ordered = [];
+      for (const n of op.order) {
+        if (byName.has(n) && !seen.has(n)) {
+          ordered.push(byName.get(n));
+          seen.add(n);
+        }
+      }
+      for (const e of next) {
+        if (!seen.has(e.name)) ordered.push(e);
+      }
+      next = ordered;
     }
     return next;
   };

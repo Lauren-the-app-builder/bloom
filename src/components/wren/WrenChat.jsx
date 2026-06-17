@@ -194,6 +194,10 @@ DO NOT generate the program yet. Just introduce yourself and ask if she has anyt
               exercise: action.exercise,
               reps: action.reps,
               sets: action.sets,
+              superset_a: action.superset_a,
+              superset_b: action.superset_b,
+              unlink_superset: action.unlink_superset,
+              order: action.order,
             });
           }
         }
