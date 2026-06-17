@@ -45,6 +45,7 @@ export default async function handler(req, res) {
     recentSessionFeedback = [],
     recentExerciseAdjustments = [],
     wrenNotes = [],
+    nourish = null,
   } = context;
 
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -94,6 +95,13 @@ Technique adjustments (recentExerciseAdjustments):
 - Once she's at the new baseline, normal double progression resumes from there: work back up to the top of the rep range, then bump.
 - An adjustment one session old is fresh — give her at least 2-3 sessions at the new technique before re-evaluating.
 - If she ever wants to revert, she'll tell you. Don't pressure her to drop the adjustment to "look like progress."
+
+Nutrition + weight trend (the `Nourish` line in the context block):
+- Lauren tracks two things from the Nourish tab: a single daily calorie goal (kcal/day) and a running weight log (lbs).
+- weight_current is her latest weigh-in. weight_weekly_avg is the mean of this week's weigh-ins (more reliable than a single reading). change.daily/weekly/monthly are signed deltas in lbs; negative = lost weight.
+- Reference these naturally when relevant — e.g. "weekly avg's down 0.6 lbs, looks like you're trending toward your goal", or "calorie goal is 1800, want me to factor that into the deload conversation?". Don't dump the numbers — pull what's useful for the moment.
+- If she hasn't logged a weight in a while (weight_log_count low or weight_current.date old), it's fine to gently nudge once: "want to log a weigh-in so I can see where you're at?". Don't nag.
+- The Nourish screen is for review only — Lauren updates the goal and logs weights there herself. Don't try to emit actions to change them.
 
 Post-session feedback (lastSessionData.feedback and recentSessionFeedback):
 - After each workout Lauren can leave a mood chip (easy / solid / tough / drained / off) and free-text notes.
@@ -208,6 +216,17 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
     `Schedule: ${scheduleSummary}`,
     `Workout names: ${workoutNames.length > 0 ? workoutNames.join(', ') : 'none'}`,
     `Unit: ${unit}`,
+    `Nourish (calorie goal + weight, lbs): ${nourish ? JSON.stringify({
+      calorie_goal: nourish.calorie_goal,
+      weight_current: nourish.weight_current,
+      weight_weekly_avg: nourish.weight_weekly_avg,
+      change: {
+        daily: nourish.weight_change_daily,
+        weekly: nourish.weight_change_weekly,
+        monthly: nourish.weight_change_monthly,
+      },
+      weight_log_count: nourish.weight_log_count,
+    }) : 'not set up yet'}`,
     `Lauren's preferences: 3x full body/week, NO squats/Bulgarians/deadlifts/lunges/single-leg hip thrusts. Shoulders are a priority. Goal: first unassisted pull-up this year (currently uses bands). Program starts May 25th.`,
   ].join('\n');
 

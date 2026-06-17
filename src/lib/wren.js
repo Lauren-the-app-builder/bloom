@@ -28,6 +28,9 @@ export async function askWren(message, context = {}, midWorkout = false) {
     recentSessionFeedback = [],
     recentExerciseAdjustments = [],
     wrenNotes = [],
+    // Nourish screen: calorie goal + weight log derived stats. Lauren wants
+    // Wren aware of these so she can reference them in conversations.
+    nourish = null,
   } = context;
 
   const res = await fetch(API, {
@@ -60,6 +63,7 @@ export async function askWren(message, context = {}, midWorkout = false) {
         recentSessionFeedback,
         recentExerciseAdjustments,
         wrenNotes,
+        nourish,
       },
       midWorkout,
     }),

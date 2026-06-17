@@ -1,6 +1,6 @@
 // Pure utility functions for the Wren coaching system.
 
-import { load, isDeloadWeek, getDeloadWeeks, getWrenNotes } from '../../lib/storage';
+import { load, isDeloadWeek, getDeloadWeeks, getWrenNotes, getCalorieGoal, getCurrentWeight, getWeeklyAvgWeight, getWeightChange, getWeightLog } from '../../lib/storage';
 import { comboKey, comboLabel } from './tokens';
 
 // ---------- Plateau detection ----------
@@ -253,6 +253,27 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
     schedule,
     unit,
     workoutNames: myWorkouts.map(w => w.name),
+    // Nourish screen snapshot — calorie goal + weight trend. Wren references
+    // this so she can speak to Lauren's nutrition + weight without us
+    // re-deriving it server-side. Numbers are all lbs (Nourish is fixed
+    // to lbs, independent of the kg/lb workout toggle).
+    nourish: (() => {
+      const cur = getCurrentWeight();
+      const log = getWeightLog();
+      return {
+        calorie_goal: getCalorieGoal() || null,
+        weight_unit: 'lbs',
+        weight_current: cur ? {
+          weight: cur.weight,
+          date: new Date(cur.ts).toLocaleDateString(),
+        } : null,
+        weight_weekly_avg: getWeeklyAvgWeight(),
+        weight_change_daily: getWeightChange('daily'),
+        weight_change_weekly: getWeightChange('weekly'),
+        weight_change_monthly: getWeightChange('monthly'),
+        weight_log_count: log.length,
+      };
+    })(),
   };
 }
 

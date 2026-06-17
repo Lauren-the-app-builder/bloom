@@ -263,6 +263,104 @@ export function clearWrenNotes() {
   save('wrenNotes', []);
 }
 
+// ---------- Nourish (calorie goal + weight log) ----------
+// Single-user, units-agnostic on the stored number: the NourishView screen
+// always renders/labels lbs (per design), so any number written here is in
+// lbs. If we ever want to follow the Bloom kg/lb toggle, conversion happens
+// at the UI layer — the store stays in one canonical unit.
+
+// Calorie goal: a single positive integer (kcal/day). 0/missing means "not
+// set" and the UI shows a placeholder. Stored as a KV so it syncs.
+export function getCalorieGoal() {
+  const v = Number(load('nourishCalorieGoal', 0));
+  return Number.isFinite(v) && v > 0 ? v : 0;
+}
+export function setCalorieGoal(kcal) {
+  const n = Math.round(Number(kcal) || 0);
+  if (!Number.isFinite(n) || n <= 0) return;
+  save('nourishCalorieGoal', n);
+}
+
+// Weight log: append-only-ish array of { ts, weight } sorted by ts ascending.
+// Same-day entries: the UI prompts before overwriting, but the store happily
+// accepts either path — replaceForDate(ts) collapses same-calendar-day rows,
+// addWeight(ts) just pushes without dedupe.
+function localDateKey(ts) {
+  const d = new Date(Number(ts) || Date.now());
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString().slice(0, 10);
+}
+export function getWeightLog() {
+  const v = load('nourishWeightLog', []);
+  if (!Array.isArray(v)) return [];
+  return v
+    .map((r) => ({ ts: Number(r?.ts) || 0, weight: Number(r?.weight) || 0 }))
+    .filter((r) => r.ts > 0 && r.weight > 0)
+    .sort((a, b) => a.ts - b.ts);
+}
+// Append a new reading. Does NOT dedupe — call replaceWeightForDate first
+// if you want the same-day overwrite behavior the UI uses.
+export function addWeight(weight, ts = Date.now()) {
+  const w = Number(weight);
+  if (!Number.isFinite(w) || w <= 0) return getWeightLog();
+  const list = getWeightLog();
+  list.push({ ts: Number(ts) || Date.now(), weight: w });
+  list.sort((a, b) => a.ts - b.ts);
+  save('nourishWeightLog', list);
+  return list;
+}
+// Replace any existing entries for the same local calendar day as `ts` with
+// a single new reading. Returns the new log.
+export function replaceWeightForDate(weight, ts = Date.now()) {
+  const w = Number(weight);
+  if (!Number.isFinite(w) || w <= 0) return getWeightLog();
+  const targetKey = localDateKey(ts);
+  const filtered = getWeightLog().filter((r) => localDateKey(r.ts) !== targetKey);
+  filtered.push({ ts: Number(ts) || Date.now(), weight: w });
+  filtered.sort((a, b) => a.ts - b.ts);
+  save('nourishWeightLog', filtered);
+  return filtered;
+}
+// Did we already log today? UI uses this to decide whether to confirm.
+export function hasWeightToday() {
+  const today = localDateKey(Date.now());
+  return getWeightLog().some((r) => localDateKey(r.ts) === today);
+}
+// Most recent weight reading (null if none).
+export function getCurrentWeight() {
+  const log = getWeightLog();
+  return log.length ? log[log.length - 1] : null;
+}
+// Mean of every reading inside the current Monday-anchored calendar week.
+// Returns null if no readings this week. More representative than a single
+// weigh-in because daily noise (hydration, sleep) cancels out.
+export function getWeeklyAvgWeight() {
+  const now = new Date();
+  const day = now.getDay() === 0 ? 6 : now.getDay() - 1; // Mon=0..Sun=6
+  const weekStart = new Date(now);
+  weekStart.setHours(0, 0, 0, 0);
+  weekStart.setDate(weekStart.getDate() - day);
+  const ws = weekStart.getTime();
+  const inWeek = getWeightLog().filter((r) => r.ts >= ws);
+  if (!inWeek.length) return null;
+  const sum = inWeek.reduce((n, r) => n + r.weight, 0);
+  return +(sum / inWeek.length).toFixed(1);
+}
+// Signed weight change over a window. `period` is 'daily' | 'weekly' |
+// 'monthly'. Compares the most recent reading against the most recent
+// reading at-or-before (now - window). Returns null if either side is
+// missing. Negative = lost weight.
+export function getWeightChange(period) {
+  const log = getWeightLog();
+  if (log.length < 2) return null;
+  const days = period === 'monthly' ? 30 : period === 'weekly' ? 7 : 1;
+  const cutoff = Date.now() - days * 86400000;
+  const current = log[log.length - 1];
+  const earlier = [...log].reverse().find((r) => r.ts <= cutoff);
+  if (!earlier || earlier.ts === current.ts) return null;
+  return +(current.weight - earlier.weight).toFixed(1);
+}
+
 function fixSession(sess) {
   if (!sess || !Array.isArray(sess.exercises)) return sess;
   return {

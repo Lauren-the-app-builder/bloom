@@ -96,6 +96,7 @@ import { useLocalState, recordSession, getSessions, getLastSession, updateSessio
 import { subscribeToPush, scheduleRestPush, cancelRestPush } from "./lib/push";
 import WrenView from "./components/wren/WrenView";
 import TodayView from "./components/wren/TodayView";
+import NourishView from "./components/wren/NourishView";
 import NudgeCard from "./components/wren/NudgeCard";
 import MissedSessionBanner from "./components/wren/MissedSessionBanner";
 import BandComboPicker from "./components/wren/BandComboPicker";
@@ -508,6 +509,9 @@ export default function BloomApp() {
             background={todayBackground}
           />
         )}
+        {tab === "nourish" && (
+          <NourishView onOpenSettings={() => setShowSettings(true)} />
+        )}
         {tab === "coach" && (
           <WrenView
             schedule={schedule}
@@ -669,6 +673,13 @@ export default function BloomApp() {
             }}>
               <Dumbbell size={20} color={tab === "home" ? c.rosedeep : c.muted} strokeWidth={tab === "home" ? 2.5 : 2} />
               <span style={{ fontSize: 10, fontWeight: tab === "home" ? 700 : 500, color: tab === "home" ? c.rosedeep : c.muted }}>Today</span>
+            </button>
+            <button onClick={() => setTab("nourish")} style={{
+              background: "none", border: "none", cursor: "pointer", padding: "4px 20px",
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+            }}>
+              <Heart size={20} color={tab === "nourish" ? c.rosedeep : c.muted} strokeWidth={tab === "nourish" ? 2.5 : 2} />
+              <span style={{ fontSize: 10, fontWeight: tab === "nourish" ? 700 : 500, color: tab === "nourish" ? c.rosedeep : c.muted }}>Nourish</span>
             </button>
             <button onClick={() => setTab("coach")} style={{
               background: "none", border: "none", cursor: "pointer", padding: "4px 20px",
