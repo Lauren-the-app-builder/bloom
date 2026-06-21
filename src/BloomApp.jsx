@@ -2481,40 +2481,49 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
           </div>
         )}
         {hiitState === "active" && (
+          // Gradient card — same blush → coral language as the "Add 20-min
+          // HIIT finisher" pill above, scaled up to hold the countdown.
+          // White text + white progress bar pop against the gradient; the
+          // Done button inverts to a solid white pill with coral text so
+          // it reads as the primary action without breaking the palette.
           <div style={{
-            marginTop: 10, background: HIIT_COLOR_BG,
-            border: `1px solid ${HIIT_COLOR}`, borderRadius: 16, padding: 18,
-            display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
+            marginTop: 12, borderRadius: 20, padding: 20,
+            background: `linear-gradient(135deg, ${c.blush} 0%, ${HIIT_COLOR} 100%)`,
+            boxShadow: `0 6px 16px rgba(226,90,117,0.30)`,
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 12,
           }}>
             <p style={{
-              fontSize: 10, fontWeight: 800, color: HIIT_COLOR, margin: 0,
+              fontSize: 10, fontWeight: 800, color: "white", margin: 0,
               letterSpacing: 1.2, display: "flex", alignItems: "center", gap: 5,
+              textShadow: "0 1px 3px rgba(140,40,70,0.25)",
             }}>
-              <Zap size={11} fill={HIIT_COLOR} /> 20-MIN HIIT FINISHER
+              <Zap size={11} fill="white" color="white" /> 20-MIN HIIT FINISHER
             </p>
             <p style={{
-              fontSize: 36, fontWeight: 700, margin: 0, color: c.charcoal,
+              fontSize: 40, fontWeight: 700, margin: 0, color: "white",
               fontVariantNumeric: "tabular-nums", letterSpacing: -0.5,
+              textShadow: "0 2px 6px rgba(140,40,70,0.25)",
             }}>
               {hiitMM}:{hiitSS}
             </p>
             {/* Progress bar — fills left to right as the 20-min window
                 elapses. Done is enabled the whole time so finishing
                 early just stops the clock. */}
-            <div style={{ width: "100%", height: 4, background: "rgba(226,90,117,0.18)", borderRadius: 999, overflow: "hidden" }}>
+            <div style={{ width: "100%", height: 4, background: "rgba(255,255,255,0.30)", borderRadius: 999, overflow: "hidden" }}>
               <div style={{
                 width: `${hiitProgress * 100}%`, height: "100%",
-                background: HIIT_COLOR, transition: "width 0.4s linear",
+                background: "white", transition: "width 0.4s linear",
               }} />
             </div>
             <div style={{ display: "flex", gap: 8, width: "100%", marginTop: 4 }}>
               <button
                 onClick={completeHiit}
                 style={{
-                  flex: 2, background: HIIT_COLOR, color: "white", border: "none",
+                  flex: 2, background: "white", color: HIIT_COLOR, border: "none",
                   padding: "11px 0", borderRadius: 12, fontSize: 14, fontWeight: 700,
                   cursor: "pointer", fontFamily: "inherit",
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  boxShadow: "0 2px 6px rgba(140,40,70,0.15)",
                 }}
               >
                 Done <Check size={15} strokeWidth={2.5} />
@@ -2522,8 +2531,8 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
               <button
                 onClick={cancelHiit}
                 style={{
-                  flex: 1, background: "transparent", color: HIIT_COLOR,
-                  border: `1px solid ${HIIT_COLOR}`, padding: "11px 0", borderRadius: 12,
+                  flex: 1, background: "transparent", color: "white",
+                  border: "1px solid rgba(255,255,255,0.7)", padding: "11px 0", borderRadius: 12,
                   fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
                 }}
               >
