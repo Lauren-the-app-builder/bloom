@@ -11,9 +11,9 @@
 // no per-exercise UI, just timer + 3 inputs + Done.
 
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Trash2 } from 'lucide-react';
 import { c } from './tokens';
-import { recordSession } from '../../lib/storage';
+import { recordSession, removeCardioSession } from '../../lib/storage';
 
 const MOOD_OPTIONS = [
   { id: 'easy', label: 'Felt easy' },
@@ -82,6 +82,19 @@ export default function CardioLog({ cardio, onClose }) {
     onClose();
   };
 
+  // Delete removes the cardio session from the week entirely — not just
+  // discards the log. Use case: Lauren opens the timer and realises she's
+  // not doing this class today (cancelled, weather, sick, whatever) and
+  // wants it off the schedule, not just unmarked.
+  const handleDelete = () => {
+    const ok = window.confirm(
+      `Remove ${cardio.name} from this week?\n\nThis takes it off your schedule. Use Cancel instead if you want to keep it on the list and log later.`
+    );
+    if (!ok) return;
+    removeCardioSession(cardio.id);
+    onClose();
+  };
+
   return (
     <div style={{
       position: 'fixed', inset: 0, background: c.cream, zIndex: 100,
@@ -106,7 +119,20 @@ export default function CardioLog({ cardio, onClose }) {
           >
             <ChevronLeft size={18} /> Cancel
           </button>
-          <div style={{ textAlign: 'right' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            <button
+              onClick={handleDelete}
+              aria-label="Remove from this week"
+              title="Remove from this week"
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                padding: 6, marginTop: -2, color: c.muted, display: 'flex',
+                alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <Trash2 size={16} />
+            </button>
+            <div style={{ textAlign: 'right' }}>
             <p style={{
               fontSize: 10, fontWeight: 700, color: c.muted,
               letterSpacing: 0.5, margin: 0,
@@ -115,6 +141,7 @@ export default function CardioLog({ cardio, onClose }) {
               fontSize: 22, fontWeight: 700, color: c.charcoal,
               margin: '2px 0 0', fontVariantNumeric: 'tabular-nums',
             }}>{fmt(elapsed)}</p>
+            </div>
           </div>
         </div>
         <h2 style={{
