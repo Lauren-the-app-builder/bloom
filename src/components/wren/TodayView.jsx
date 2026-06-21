@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, CalendarRange } from 'lucide-react';
 import { c } from './tokens';
-import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage, getCardioSessionsForWeek, addCardioSession, removeCardioSession, recordSession } from '../../lib/storage';
+import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage, getCardioSessionsForWeek, addCardioSession, removeCardioSession } from '../../lib/storage';
 import { computeActiveNudge, markTriggerSeen } from './wrenTriggers';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 
@@ -649,34 +649,14 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                           >
                             <Check size={12} color={c.muted} strokeWidth={2.5} />
                           </button>
+                        ) : isToday ? (
+                          // Passive 'Today' tag — matches lifting rows. To
+                          // record a cardio session Lauren has to tap the
+                          // row itself (which opens CardioLog with the
+                          // timer + zone + felt fields). No quick-mark.
+                          <span style={{ fontSize: 10, fontWeight: 700, color: c.rosedeep, background: c.blushLight, padding: '2px 8px', borderRadius: 999 }}>Today</span>
                         ) : (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              recordSession({
-                                workoutName: `Cardio: ${cs.name}`,
-                                tag: 'cardio',
-                                exercises: {},
-                                durationSec: 0,
-                              });
-                              setScheduleBump((b) => b + 1);
-                            }}
-                            title={isToday ? 'Mark done' : 'Mark done'}
-                            style={{
-                              width: 22, height: 22, borderRadius: '50%',
-                              border: `1.5px solid ${isToday ? c.rosedeep : c.line}`,
-                              background: 'transparent', padding: 0, cursor: 'pointer',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              flexShrink: 0, fontFamily: 'inherit',
-                            }}
-                          >
-                            {isToday && (
-                              <span style={{
-                                width: 8, height: 8, borderRadius: '50%',
-                                background: c.rosedeep,
-                              }} />
-                            )}
-                          </button>
+                          <Play size={12} color={c.muted} style={{ flexShrink: 0 }} />
                         )}
                       </button>
                     );
