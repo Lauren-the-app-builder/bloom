@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, CalendarRange } from 'lucide-react';
 import { c } from './tokens';
-import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage } from '../../lib/storage';
+import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage, getCardioSessionsForWeek, addCardioSession, removeCardioSession, recordSession } from '../../lib/storage';
 import { computeActiveNudge, markTriggerSeen } from './wrenTriggers';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 
@@ -32,6 +32,14 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
   const [scheduleBump, setScheduleBump] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [draft, setDraft] = useState({});
+  // Cardio is user-added, week-scoped, and stored separately from the
+  // Wren-generated lifting program. Re-read on each scheduleBump so adds /
+  // removes / mark-done events refresh the list.
+  const cardioForWeek = getCardioSessionsForWeek();
+  // Inline "Add a cardio session" form state inside the Edit panel.
+  const [addingCardio, setAddingCardio] = useState(false);
+  const [cardioNameDraft, setCardioNameDraft] = useState('');
+  const [cardioDayDraft, setCardioDayDraft] = useState('');
   void scheduleBump;
   const rawProgram = getActiveProgram();
   const program = rawProgram?.program_json || rawProgram || null;
@@ -154,6 +162,25 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
       myWorkouts: [],
       missedSessions: [],
     });
+  })();
+
+  // Which cardio names have been logged for this calendar week. Cardio
+  // sessions write a session record with workoutName "Cardio: <name>" so
+  // we can match by name → done. Keyed by lowercase name for tolerance.
+  const doneCardioNames = (() => {
+    const set = new Set();
+    const now = new Date();
+    const dow = now.getDay() === 0 ? 6 : now.getDay() - 1;
+    const weekStart = new Date(now);
+    weekStart.setHours(0, 0, 0, 0);
+    weekStart.setDate(weekStart.getDate() - dow);
+    const ws = weekStart.getTime();
+    for (const s of getSessions()) {
+      if (Number(s.finishedAt) < ws) continue;
+      const m = /^Cardio:\s*(.+)$/i.exec(s.workoutName || '');
+      if (m) set.add(m[1].trim().toLowerCase());
+    }
+    return set;
   })();
 
   // Which session labels (A/B/C) have been completed this program week.
@@ -547,6 +574,109 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
                       </button>
                     );
                   })}
+                  {/* Cardio sessions for this week — added by Lauren (or by
+                      Wren). Different badge color (cardio orange) so they
+                      read as distinct from the lifting program. Tapping
+                      the round circle marks done; tapping the row itself
+                      doesn't start a workout (cardio has no on-screen
+                      flow yet — done is just a log). */}
+                  {cardioForWeek.map((cs) => {
+                    const done = doneCardioNames.has(cs.name.trim().toLowerCase());
+                    const isToday = cs.day && cs.day.toLowerCase() === dayName.toLowerCase();
+                    return (
+                      <div
+                        key={cs.id}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '10px 12px', borderRadius: 16, background: c.white,
+                          border: `1px solid ${c.line}`, width: '100%',
+                        }}
+                      >
+                        <div style={{
+                          width: 26, height: 26, borderRadius: 8, background: '#FFF0E8',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: '#D4844A', fontSize: 10, fontWeight: 800, flexShrink: 0,
+                          opacity: done ? 0.5 : 1, letterSpacing: 0.5,
+                        }}>
+                          C
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{
+                            fontSize: 13, fontWeight: 600, color: c.charcoal,
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}>
+                            {cs.name}
+                          </div>
+                          <div style={{ fontSize: 11, color: c.muted }}>{cs.day} · Cardio</div>
+                        </div>
+                        {done ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Undo: find this week's matching cardio
+                              // session record and delete it. Mirrors the
+                              // lifting undo flow above.
+                              const now = new Date();
+                              const dow = now.getDay() === 0 ? 6 : now.getDay() - 1;
+                              const wkStart = new Date(now);
+                              wkStart.setHours(0, 0, 0, 0);
+                              wkStart.setDate(wkStart.getDate() - dow);
+                              const ws = wkStart.getTime();
+                              const target = `cardio: ${cs.name.trim().toLowerCase()}`;
+                              const matches = getSessions().filter((sess) => {
+                                const t = Number(sess.finishedAt);
+                                if (!Number.isFinite(t) || t < ws) return false;
+                                return (sess.workoutName || '').trim().toLowerCase() === target;
+                              });
+                              if (!matches.length) return;
+                              const ok = window.confirm(`Mark ${cs.name} as not done?`);
+                              if (!ok) return;
+                              for (const m of matches) deleteSession(m.finishedAt);
+                              setScheduleBump((b) => b + 1);
+                            }}
+                            title="Mark as not done"
+                            style={{
+                              width: 22, height: 22, borderRadius: '50%',
+                              border: `1.5px solid ${c.muted}`,
+                              background: 'transparent', padding: 0, cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              flexShrink: 0, fontFamily: 'inherit',
+                            }}
+                          >
+                            <Check size={12} color={c.muted} strokeWidth={2.5} />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              recordSession({
+                                workoutName: `Cardio: ${cs.name}`,
+                                tag: 'cardio',
+                                exercises: {},
+                                durationSec: 0,
+                              });
+                              setScheduleBump((b) => b + 1);
+                            }}
+                            title={isToday ? 'Mark done' : 'Mark done'}
+                            style={{
+                              width: 22, height: 22, borderRadius: '50%',
+                              border: `1.5px solid ${isToday ? c.rosedeep : c.line}`,
+                              background: 'transparent', padding: 0, cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              flexShrink: 0, fontFamily: 'inherit',
+                            }}
+                          >
+                            {isToday && (
+                              <span style={{
+                                width: 8, height: 8, borderRadius: '50%',
+                                background: c.rosedeep,
+                              }} />
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
                 {!confirmed && (
                   <button
@@ -594,6 +724,181 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
                     </div>
                   </div>
                 ))}
+
+                {/* Cardio block — separate from the lifting day-pickers
+                    because cardio is user-added, week-scoped, and only
+                    cardio rows are removable (lifting A/B/C is the
+                    program and is intentionally not deletable here). */}
+                <div style={{
+                  marginTop: 6, paddingTop: 14, borderTop: `1px solid ${c.line}`,
+                  display: 'flex', flexDirection: 'column', gap: 8,
+                }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: c.charcoal }}>
+                    Cardio this week
+                  </div>
+                  {cardioForWeek.length === 0 && !addingCardio && (
+                    <div style={{ fontSize: 12, color: c.muted }}>
+                      None yet. Tap below to add one.
+                    </div>
+                  )}
+                  {cardioForWeek.map((cs) => (
+                    <div
+                      key={cs.id}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '8px 10px', borderRadius: 12, background: c.white,
+                        border: `1px solid ${c.line}`,
+                      }}
+                    >
+                      <div style={{
+                        width: 26, height: 26, borderRadius: 8, background: '#FFF0E8',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: '#D4844A', fontSize: 10, fontWeight: 800, flexShrink: 0,
+                        letterSpacing: 0.5,
+                      }}>
+                        C
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          fontSize: 13, fontWeight: 600, color: c.charcoal,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>
+                          {cs.name}
+                        </div>
+                        <div style={{ fontSize: 11, color: c.muted }}>{cs.day}</div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          removeCardioSession(cs.id);
+                          setScheduleBump((b) => b + 1);
+                        }}
+                        aria-label="Remove"
+                        title="Remove"
+                        style={{
+                          width: 24, height: 24, borderRadius: '50%',
+                          background: '#FDE8E8', border: 'none', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <span style={{ color: '#E05050', fontWeight: 700, fontSize: 13, lineHeight: 1 }}>×</span>
+                      </button>
+                    </div>
+                  ))}
+
+                  {!addingCardio && (
+                    <button
+                      onClick={() => {
+                        setAddingCardio(true);
+                        setCardioNameDraft('');
+                        setCardioDayDraft('');
+                      }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '8px 10px', borderRadius: 12,
+                        background: c.white, border: `1px dashed ${c.line}`,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                      }}
+                    >
+                      <div style={{
+                        width: 22, height: 22, borderRadius: 6, background: c.blushLight,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: c.rosedeep, fontWeight: 700, fontSize: 14, lineHeight: 1,
+                      }}>+</div>
+                      <span style={{ fontSize: 12, color: c.rosedeep, fontWeight: 600 }}>
+                        Add a cardio session
+                      </span>
+                    </button>
+                  )}
+
+                  {addingCardio && (
+                    <div style={{
+                      background: c.white, border: `1px solid ${c.line}`,
+                      borderRadius: 12, padding: 12, display: 'flex',
+                      flexDirection: 'column', gap: 10,
+                    }}>
+                      <div>
+                        <div style={{
+                          fontSize: 10, fontWeight: 700, color: c.rosedeep,
+                          letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 4,
+                        }}>Session name</div>
+                        <input
+                          type="text"
+                          autoFocus
+                          placeholder="e.g. Spin class, HIIT, Run…"
+                          value={cardioNameDraft}
+                          onChange={(e) => setCardioNameDraft(e.target.value)}
+                          style={{
+                            width: '100%', fontSize: 13, padding: '8px 10px',
+                            border: `1px solid ${c.line}`, borderRadius: 10,
+                            background: c.cream, color: c.charcoal, outline: 'none',
+                            fontFamily: 'inherit', boxSizing: 'border-box',
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <div style={{
+                          fontSize: 10, fontWeight: 700, color: c.rosedeep,
+                          letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 4,
+                        }}>Day</div>
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                          {WEEKDAYS.map((day) => {
+                            const active = cardioDayDraft === day;
+                            return (
+                              <button
+                                key={day}
+                                onClick={() => setCardioDayDraft(day)}
+                                style={{
+                                  padding: '6px 9px', borderRadius: 999, cursor: 'pointer',
+                                  fontFamily: 'inherit', fontSize: 11, fontWeight: 700,
+                                  border: `1px solid ${active ? c.rosedeep : c.line}`,
+                                  background: active ? c.rosedeep : c.white,
+                                  color: active ? 'white' : c.charcoal,
+                                }}
+                              >
+                                {day.slice(0, 3)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          onClick={() => {
+                            const trimmed = cardioNameDraft.trim();
+                            if (!trimmed || !cardioDayDraft) return;
+                            addCardioSession({ name: trimmed, day: cardioDayDraft });
+                            setAddingCardio(false);
+                            setCardioNameDraft('');
+                            setCardioDayDraft('');
+                            setScheduleBump((b) => b + 1);
+                          }}
+                          disabled={!cardioNameDraft.trim() || !cardioDayDraft}
+                          style={{
+                            flex: 1, padding: '9px 0', borderRadius: 10, border: 'none',
+                            cursor: cardioNameDraft.trim() && cardioDayDraft ? 'pointer' : 'default',
+                            background: c.rosedeep, color: 'white',
+                            fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+                            opacity: cardioNameDraft.trim() && cardioDayDraft ? 1 : 0.55,
+                          }}
+                        >
+                          Add to this week
+                        </button>
+                        <button
+                          onClick={() => { setAddingCardio(false); setCardioNameDraft(''); setCardioDayDraft(''); }}
+                          style={{
+                            padding: '9px 14px', borderRadius: 10, cursor: 'pointer',
+                            background: c.white, color: c.muted, fontSize: 13, fontWeight: 700,
+                            fontFamily: 'inherit', border: `1px solid ${c.line}`,
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
                   <button
                     onClick={() => {

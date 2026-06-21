@@ -46,6 +46,7 @@ export default async function handler(req, res) {
     recentExerciseAdjustments = [],
     wrenNotes = [],
     nourish = null,
+    cardioThisWeek = [],
   } = context;
 
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -57,7 +58,7 @@ export default async function handler(req, res) {
     })
     .join(', ');
 
-  const systemPrompt = `You are Wren, a personal strength coach AND certified nutritionist inside the Bloom fitness app. You coach Lauren, a woman training for a lean, muscular physique. She trains 3 days per week on a full-body lifting program (days flex based on her weekly availability). Lifting is the only training modality you program — do not invent, schedule, or comment on cardio, conditioning, or other modalities unless Lauren explicitly brings them up. Nutrition is fully in scope: you coach her food, calories, macros, hydration, and meal timing alongside her training.
+  const systemPrompt = `You are Wren, a personal strength coach AND certified nutritionist inside the Bloom fitness app. You coach Lauren, a woman training for a lean, muscular physique. She trains 3 days per week on a full-body lifting program (days flex based on her weekly availability). Lifting is the only training modality you PROGRAM — never auto-add a lifting day. Cardio is week-scoped and user-added: when Lauren mentions a class or cardio session she's planning this week, you can add it for her via the add_cardio_session action (see below). Don't surface cardio recommendations unprompted unless her own data (recent fatigue, weekly pattern) suggests it's relevant. Nutrition is fully in scope: you coach her food, calories, macros, hydration, and meal timing alongside her training.
 
 Your personality:
 - Warm and friendly, like a smart friend who happens to be a great coach. Use Lauren's name. Be conversational.
@@ -175,7 +176,7 @@ What you never do:
 - Add filler encouragement Lauren didn't ask for
 - Pad responses with "great question" or "absolutely"
 - Give generic advice that ignores her logged data
-- Comment on cardio, conditioning, or non-lifting activity unless Lauren brings it up
+- Add a cardio session unprompted — wait for Lauren to mention it, then add it with add_cardio_session
 - Log, schedule, or reference any non-lifting modality in her program or workout plan
 - Write messages longer than 4 sentences
 - Ask multiple questions in one message
@@ -221,6 +222,7 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
     `Missed sessions (last 28 days): ${missedSessionCount}${missedSessionDetails.length > 0 ? ' — ' + JSON.stringify(missedSessionDetails) : ''}`,
     `Schedule: ${scheduleSummary}`,
     `Workout names: ${workoutNames.length > 0 ? workoutNames.join(', ') : 'none'}`,
+    `Cardio this week (user-added, week-scoped): ${cardioThisWeek.length ? JSON.stringify(cardioThisWeek) : 'none'}`,
     `Unit: ${unit}`,
     `Nourish (calorie goal + weight, lbs): ${nourish ? JSON.stringify({
       phase: nourish.phase,
@@ -263,7 +265,7 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
             items: {
               type: 'object',
               properties: {
-                type: { type: 'string', description: 'Action type. Program/chat scope: generate_program, assign_punishment, flag_plateau, set_schedule, edit_workout, apply_deload, remove_deload, remember (save a long-term fact about Lauren), forget_note (drop one). Live-workout scope (only valid when the user message says it is mid-workout): set_target_weight, set_target (rep target), set_rest, add_set, add_exercise, remove_exercise, reorder.' },
+                type: { type: 'string', description: 'Action type. Program/chat scope: generate_program, assign_punishment, flag_plateau, set_schedule, edit_workout, apply_deload, remove_deload, add_cardio_session (week-scoped, Lauren-triggered cardio — pair with `name` and `day`), remember (save a long-term fact about Lauren), forget_note (drop one). Live-workout scope (only valid when the user message says it is mid-workout): set_target_weight, set_target (rep target), set_rest, add_set, add_exercise, remove_exercise, reorder.' },
                 program: { type: 'object', description: 'For generate_program: the full program object with weeks array' },
                 description: { type: 'string', description: 'For assign_punishment: the punishment description' },
                 exercise: { type: 'string', description: 'For flag_plateau: the exercise name. For edit_workout: the exercise whose reps and/or sets you are changing (pair with reps and/or sets).' },
@@ -283,6 +285,8 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
                 superset_a: { type: 'string', description: 'For edit_workout link-superset: first exercise to pair (must already exist in the session). Pair with superset_b.' },
                 superset_b: { type: 'string', description: 'For edit_workout link-superset: second exercise to pair (must already exist in the session). Pair with superset_a.' },
                 unlink_superset: { type: 'string', description: 'For edit_workout: exercise name. Breaks any superset link involving it, in either direction. No-op if it isn\'t in a superset.' },
+                name: { type: 'string', description: 'For add_cardio_session: the cardio name as Lauren would say it (e.g. "Spin class", "HIIT", "Run", "Yoga"). Keep it short and human.' },
+                day: { type: 'string', description: 'For add_cardio_session: full weekday name (Monday-Sunday) Lauren wants the cardio session scheduled this week. Saturday is fine for cardio (only lifting defaults to rest there).' },
                 assignments: {
                   type: 'array',
                   description: 'For set_schedule: which day each lifting session falls on this week. Include all three sessions.',

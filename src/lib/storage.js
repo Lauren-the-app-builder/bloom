@@ -561,6 +561,57 @@ export function nextWeekKey() {
   return currentWeekKey(d);
 }
 
+// ---------- Cardio sessions (user-added, week-scoped) ----------
+// Lifting comes from the Wren program (A/B/C, generated). Cardio is
+// user-added and week-only — it doesn't carry over when Monday rolls
+// around. Stored as a flat array; consumers filter by weekKey on read.
+//
+// Shape: { id, name, day, weekKey, createdAt }
+//   day:     full weekday name ('Monday' … 'Sunday')
+//   weekKey: Monday-anchored YYYY-MM-DD (matches currentWeekKey output)
+const CARDIO_KEY = 'cardioSessions';
+
+function loadCardioList() {
+  const v = load(CARDIO_KEY, []);
+  return Array.isArray(v) ? v : [];
+}
+
+export function getCardioSessionsForWeek(weekKey = currentWeekKey()) {
+  return loadCardioList()
+    .filter((s) => s && s.weekKey === weekKey)
+    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+}
+
+export function addCardioSession({ name, day, weekKey = currentWeekKey() }) {
+  const cleanName = String(name || '').trim();
+  if (!cleanName) return null;
+  if (!day) return null;
+  const entry = {
+    id: `cardio_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+    name: cleanName,
+    day: String(day),
+    weekKey,
+    createdAt: Date.now(),
+  };
+  const next = [...loadCardioList(), entry];
+  save(CARDIO_KEY, pruneCardioList(next));
+  return entry;
+}
+
+export function removeCardioSession(id) {
+  if (!id) return;
+  const next = loadCardioList().filter((s) => s.id !== id);
+  save(CARDIO_KEY, next);
+}
+
+// Defensive cleanup: drop entries from more than ~4 weeks ago. Cardio is
+// week-scoped and the UI only ever asks for the current week, so old rows
+// would just sit forever. Runs inline on add so the list never grows.
+function pruneCardioList(list) {
+  const cutoff = Date.now() - 28 * 86400000;
+  return list.filter((s) => (Number(s.createdAt) || 0) >= cutoff);
+}
+
 // Has Lauren set/confirmed her training days for the current week yet?
 export function isScheduleConfirmedThisWeek() {
   return load('scheduleWeekConfirmed', null) === currentWeekKey();

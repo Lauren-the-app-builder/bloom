@@ -273,7 +273,7 @@ const pushers = {
   },
 };
 
-const KV_KEYS = ['schedule', 'lastSessions', 'coachContext', 'unit', 'exerciseNotes', 'focusLiftName', 'wrenSetsOverrides', 'nourishCalorieGoal', 'nourishWeightLog', 'nourishPhase', 'wrenNotes'];
+const KV_KEYS = ['schedule', 'lastSessions', 'coachContext', 'unit', 'exerciseNotes', 'focusLiftName', 'wrenSetsOverrides', 'nourishCalorieGoal', 'nourishWeightLog', 'nourishPhase', 'wrenNotes', 'cardioSessions'];
 
 // While pulling, suppress queue() so the initial render's save() effects
 // don't immediately push stale localStorage data back to Supabase.

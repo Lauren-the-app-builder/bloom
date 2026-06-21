@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Sparkles, ChevronRight } from 'lucide-react';
 import { c } from './tokens';
-import { getWrenMessages, addWrenMessage, resetWrenChat, getActiveProgram, saveProgram, setProgramSchedule, editProgramSession, getSessions, getMissedSessions, addMissedSession, addDeloadWeek, removeDeloadWeek, addWrenNote, getWrenNotes, removeWrenNote } from '../../lib/storage';
+import { getWrenMessages, addWrenMessage, resetWrenChat, getActiveProgram, saveProgram, setProgramSchedule, editProgramSession, getSessions, getMissedSessions, addMissedSession, addDeloadWeek, removeDeloadWeek, addWrenNote, getWrenNotes, removeWrenNote, addCardioSession } from '../../lib/storage';
 
 // If the gap since Lauren's last interaction with Wren exceeds this, the
 // chat starts fresh on next open — Wren has no memory of the old thread,
@@ -183,6 +183,9 @@ DO NOT generate the program yet. Just introduce yourself and ask if she has anyt
             const target = (action.fact || '').trim().toLowerCase();
             const match = getWrenNotes().find(n => String(n.text || '').toLowerCase() === target);
             if (match) removeWrenNote(match.id);
+          }
+          if (action.type === 'add_cardio_session' && action.name && action.day) {
+            addCardioSession({ name: action.name, day: action.day });
           }
           if (action.type === 'edit_workout' && action.session_label) {
             editProgramSession({

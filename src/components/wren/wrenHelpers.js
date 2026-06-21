@@ -1,6 +1,6 @@
 // Pure utility functions for the Wren coaching system.
 
-import { load, isDeloadWeek, getDeloadWeeks, getWrenNotes, getCalorieGoal, getCurrentWeight, getWeeklyAvgWeight, getWeightChange, getWeightLog, getNourishPhase } from '../../lib/storage';
+import { load, isDeloadWeek, getDeloadWeeks, getWrenNotes, getCalorieGoal, getCurrentWeight, getWeeklyAvgWeight, getWeightChange, getWeightLog, getNourishPhase, getCardioSessionsForWeek } from '../../lib/storage';
 import { comboKey, comboLabel } from './tokens';
 
 // ---------- Plateau detection ----------
@@ -253,6 +253,11 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
     schedule,
     unit,
     workoutNames: myWorkouts.map(w => w.name),
+    // Cardio is week-scoped and user-added (or Wren-added via
+    // add_cardio_session). Hand the current week's list to the API so
+    // Wren can reference it without re-deriving — and so she doesn't
+    // double-add the same one when Lauren mentions it twice.
+    cardioThisWeek: getCardioSessionsForWeek().map(s => ({ name: s.name, day: s.day })),
     // Nourish screen snapshot — calorie goal + weight trend. Wren references
     // this so she can speak to Lauren's nutrition + weight without us
     // re-deriving it server-side. Numbers are all lbs (Nourish is fixed
