@@ -239,6 +239,9 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
         date: new Date(s.finishedAt).toLocaleDateString(),
         mood: s.feedback.mood || null,
         notes: s.feedback.notes || null,
+        // Cardio sessions carry { zone } in a sidecar — surface it so Wren
+        // can read intensity alongside mood without parsing the name.
+        cardio: s.cardio || null,
       })),
     // Per-exercise technique adjustments Lauren has flagged in the last
     // ~12 sessions. Wren must NOT read drops on these exercises as

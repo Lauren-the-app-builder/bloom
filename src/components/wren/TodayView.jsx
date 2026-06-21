@@ -13,7 +13,7 @@ const SESSION_COLORS = {
   C: { gradient: 'linear-gradient(160deg, #FFD3B8 0%, #F4B8D4 50%, #C8B4E8 100%)', shadow: 'rgba(244,184,212,0.35)' },
 };
 
-export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onViewProgram, onOpenHistory, onOpenSettings, background = 'sunset' }) {
+export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump, onAskWren, onViewProgram, onOpenHistory, onOpenSettings, background = 'sunset' }) {
   // Per-background hero config. Sunset's values are LOCKED — that look is
   // the one the design was tuned for. Lauren shares sunset's size + mask
   // but uses a small vertical offset so her head sits below the date,
@@ -584,12 +584,16 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
                     const done = doneCardioNames.has(cs.name.trim().toLowerCase());
                     const isToday = cs.day && cs.day.toLowerCase() === dayName.toLowerCase();
                     return (
-                      <div
+                      <button
                         key={cs.id}
+                        onClick={() => { if (!done && onStartCardio) onStartCardio(cs); }}
+                        disabled={done}
                         style={{
                           display: 'flex', alignItems: 'center', gap: 10,
                           padding: '10px 12px', borderRadius: 16, background: c.white,
                           border: `1px solid ${c.line}`, width: '100%',
+                          textAlign: 'left', fontFamily: 'inherit',
+                          cursor: done ? 'default' : 'pointer',
                         }}
                       >
                         <div style={{
@@ -674,7 +678,7 @@ export default function TodayView({ onStartWorkout, sessionsBump, onAskWren, onV
                             )}
                           </button>
                         )}
-                      </div>
+                      </button>
                     );
                   })}
                 </div>

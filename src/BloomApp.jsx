@@ -97,6 +97,7 @@ import { subscribeToPush, scheduleRestPush, cancelRestPush } from "./lib/push";
 import WrenView from "./components/wren/WrenView";
 import TodayView from "./components/wren/TodayView";
 import NourishView from "./components/wren/NourishView";
+import CardioLog from "./components/wren/CardioLog";
 import NudgeCard from "./components/wren/NudgeCard";
 import MissedSessionBanner from "./components/wren/MissedSessionBanner";
 import BandComboPicker from "./components/wren/BandComboPicker";
@@ -353,6 +354,7 @@ export default function BloomApp() {
   const [showWeek, setShowWeek] = useState(false);
   const [activeWorkout, setActiveWorkout] = useState(null); // workout being viewed
   const [inProgress, setInProgress] = useState(null); // workout currently running
+  const [cardioInProgress, setCardioInProgress] = useState(null); // cardio session being logged
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingWorkout, setEditingWorkout] = useState(null);
   const [customExercises, setCustomExercises] = useLocalState("customExercises", []);
@@ -501,6 +503,7 @@ export default function BloomApp() {
         {tab === "home" && (
           <TodayView
             onStartWorkout={(w) => { setInProgress(w); }}
+            onStartCardio={(cs) => setCardioInProgress(cs)}
             sessionsBump={sessionsBump}
             onAskWren={() => { setCoachInitialView('chat'); setTab("coach"); }}
             onViewProgram={() => { setCoachInitialView('program'); setTab("coach"); }}
@@ -548,6 +551,13 @@ export default function BloomApp() {
         )}
 
         {inProgress && <ActiveWorkout workout={inProgress} lastSessions={lastSessions} exerciseNotes={exerciseNotes} setExerciseNotes={setExerciseNotes} allExercises={allExercises} myWorkouts={myWorkouts} setMyWorkouts={setMyWorkouts} onFinish={() => { setInProgress(null); setSessionsBump(b => b + 1); }} />}
+
+        {cardioInProgress && (
+          <CardioLog
+            cardio={cardioInProgress}
+            onClose={() => { setCardioInProgress(null); setSessionsBump(b => b + 1); }}
+          />
+        )}
 
         {showFocusLift && <FocusLiftView onClose={() => setShowFocusLift(false)} focusLiftName={focusLiftName} setFocusLiftName={setFocusLiftName} allExercises={allExercises} />}
 
@@ -660,7 +670,7 @@ export default function BloomApp() {
         )}
 
         {/* Bottom nav — Today + Wren */}
-        {!inProgress && (
+        {!inProgress && !cardioInProgress && (
           <nav style={{
             display: "flex", justifyContent: "space-around", alignItems: "center",
             padding: "10px 0 22px", borderTop: `1px solid ${c.line}`,
