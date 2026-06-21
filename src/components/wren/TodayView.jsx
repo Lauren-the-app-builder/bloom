@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, CalendarRange } from 'lucide-react';
+import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, CalendarRange, Zap } from 'lucide-react';
 import { c } from './tokens';
 import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage, getCardioSessionsForWeek, addCardioSession, removeCardioSession } from '../../lib/storage';
 import { computeActiveNudge, markTriggerSeen } from './wrenTriggers';
@@ -191,6 +191,21 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
     for (const s of getSessions()) {
       if (Number(s.finishedAt) < weekStart) continue;
       if ((s.workoutName || '').includes('(past entry)')) continue;
+      const m = /^Session\s+([A-Za-z])/.exec(s.workoutName || '');
+      if (m) set.add(m[1].toUpperCase());
+    }
+    return set;
+  })();
+  // Which session labels had a 20-min HIIT finisher attached this week,
+  // so the row can render a ⚡ next to its done check.
+  const hiitLabels = (() => {
+    const set = new Set();
+    if (!startDate || !hasStarted) return set;
+    const weekStart = startDate.getTime() + (currentWeek - 1) * 7 * 86400000;
+    for (const s of getSessions()) {
+      if (Number(s.finishedAt) < weekStart) continue;
+      if ((s.workoutName || '').includes('(past entry)')) continue;
+      if (!s.hiitFinisher) continue;
       const m = /^Session\s+([A-Za-z])/.exec(s.workoutName || '');
       if (m) set.add(m[1].toUpperCase());
     }
@@ -496,6 +511,7 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                   {allSessions.map(s => {
                     const sc = SESSION_COLORS[s.session_label] || SESSION_COLORS.A;
                     const done = doneLabels.has(String(s.session_label).toUpperCase());
+                    const hasHiit = hiitLabels.has(String(s.session_label).toUpperCase());
                     const isToday = s.scheduled_day && s.scheduled_day.toLowerCase() === dayName.toLowerCase();
                     return (
                       <button
@@ -520,10 +536,16 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                           {s.session_label}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: c.charcoal }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: c.charcoal, display: 'flex', alignItems: 'center', gap: 5 }}>
                             Session {s.session_label}
+                            {/* HIIT finisher glyph — only renders when the
+                                completed session record has hiitFinisher:true,
+                                so the row visibly differs from a plain lift. */}
+                            {hasHiit && <Zap size={11} fill="#E25A75" color="#E25A75" />}
                           </div>
-                          <div style={{ fontSize: 11, color: c.muted }}>{s.scheduled_day || 'unscheduled'}</div>
+                          <div style={{ fontSize: 11, color: c.muted }}>
+                            {s.scheduled_day || 'unscheduled'}{hasHiit ? ' · + HIIT' : ''}
+                          </div>
                         </div>
                         {done ? (
                           /* Quiet circle-check: outline ring with a slim
@@ -941,8 +963,15 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
           }}>
             <Check size={16} color="white" strokeWidth={3} />
           </div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#2e7d4a' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#2e7d4a', display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
             Session {todaySession.session_label} complete — rest up
+            {/* If today's session also had a HIIT finisher, surface that
+                in the done banner so Lauren remembers she did it. */}
+            {hiitLabels.has(String(todaySession.session_label).toUpperCase()) && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#E25A75' }}>
+                · <Zap size={11} fill="#E25A75" color="#E25A75" /> HIIT
+              </span>
+            )}
           </div>
         </div>
       )}

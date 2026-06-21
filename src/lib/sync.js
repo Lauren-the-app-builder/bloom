@@ -73,6 +73,10 @@ export async function pullAll() {
         exercises: s.exercises || {},
         durationSec: s.duration_sec || 0,
         finishedAt: new Date(s.finished_at).getTime(),
+        // 20-min HIIT finisher tacked onto a lift. Stored as a boolean
+        // sidecar so history + Today can render the ⚡ glyph and so Wren
+        // sees it in her context block.
+        ...(s.hiit_finisher ? { hiitFinisher: true } : {}),
       })));
   }
 
@@ -181,6 +185,10 @@ const pushers = {
       exercises: s.exercises || {},
       duration_sec: s.durationSec || 0,
       finished_at: new Date(s.finishedAt).toISOString(),
+      // Persist the HIIT finisher flag. We send the boolean even when
+      // false so toggling off in SessionEditModal clears the remote
+      // column (otherwise an old `true` would survive).
+      hiit_finisher: !!s.hiitFinisher,
     }));
     // Write IDs back to localStorage so future pushes are stable.
     saveKV('sessions', list.map((s, i) => ({ ...s, id: rows[i].id })));

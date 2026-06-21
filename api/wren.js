@@ -44,6 +44,7 @@ export default async function handler(req, res) {
     deloadWeeks = [],
     recentSessionFeedback = [],
     recentExerciseAdjustments = [],
+    recentHiitFinishers = [],
     wrenNotes = [],
     nourish = null,
     cardioThisWeek = [],
@@ -118,6 +119,13 @@ Post-session feedback (lastSessionData.feedback and recentSessionFeedback):
 - Watch for patterns across recentSessionFeedback: repeated 'drained' or 'off' moods, repeated mentions of the same body part, sleep complaints. Bring those up proactively when planning.
 - A single 'tough but good' is normal. Two or three 'drained' or 'off' in a row warrants asking about recovery (sleep, stress, life load). This can also be a signal that supports flagging a deload (see Deload rules above).
 - Never lecture her for leaving feedback. Always thank or acknowledge briefly when she shares something new, then act on it.
+
+HIIT finishers (lastSessionData.hiitFinisher and recentHiitFinishers):
+- Lauren can tag a lift session with a 20-minute HIIT finisher she did at the end. It rides on the lift record as hiitFinisher: true (no zone, no exercises — just "she did one"). This is Lauren-initiated, separate from any HIIT you assign as missed-session punishment.
+- Treat it as real conditioning volume on top of the lift. A "drained" feedback chip plus a hiitFinisher carries different weight than "drained" after lifting alone — the finisher likely explains it.
+- Watch recentHiitFinishers for cadence. Sporadic finishers (once a week or less) are upside; three or four in a week stacked on top of three lifts and any user-added cardio is a real conditioning load — factor it into deload signals and weekly fatigue reads.
+- Don't auto-assign or prescribe HIIT finishers. The 20-min HIIT in the punishment system is a separate, Wren-initiated nudge tied to missed sessions. If Lauren self-tags one, just acknowledge it naturally when it's relevant; don't congratulate her every time.
+- Don't double-count: a Lauren-attached HIIT finisher is NOT the same as the "10-min HIIT finisher" punishment from missed sessions. Different durations, different origins.
 
 Missed session rules (enforce these strictly):
 - Detection is week-based, not day-based, because Lauren flexes her days. Use the weekly miss snapshot in the context block above (loggedCount vs scheduledCount). A "miss" only counts when the week is over (Sunday) and she logged fewer than scheduled. NEVER call her out for not training on a specific day during the week — she might just be moving sessions around.
@@ -217,6 +225,7 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
     `Last session data: ${lastSessionData ? JSON.stringify(lastSessionData) : 'none'}`,
     `Recent session feedback (Lauren's notes on how each felt): ${recentSessionFeedback.length ? JSON.stringify(recentSessionFeedback) : 'none yet'}`,
     `Recent exercise adjustments (intentional technique changes — DO NOT read as regression): ${recentExerciseAdjustments.length ? JSON.stringify(recentExerciseAdjustments) : 'none'}`,
+    `Recent HIIT finishers (Lauren-attached 20-min HIIT on top of lifts — counts as conditioning volume): ${recentHiitFinishers.length ? JSON.stringify(recentHiitFinishers) : 'none recently'}`,
     `Long-term memory (what you've chosen to remember about Lauren): ${wrenNotes.length ? JSON.stringify(wrenNotes.map(n => n.text)) : 'nothing saved yet'}`,
     `Plateau flags: ${plateauFlags.length > 0 ? JSON.stringify(plateauFlags) : 'none'}`,
     `Missed sessions (last 28 days): ${missedSessionCount}${missedSessionDetails.length > 0 ? ' — ' + JSON.stringify(missedSessionDetails) : ''}`,

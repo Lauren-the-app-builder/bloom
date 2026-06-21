@@ -91,6 +91,7 @@ import {
   Download,
   Image as ImageIcon,
   Scale,
+  Zap,
 } from "lucide-react";
 import { useLocalState, recordSession, getSessions, getLastSession, updateSession, deleteSession, load, save, getActiveProgram, getMissedSessions, ensureSessionAOrder, ensureSessionBPulldown, ensureSessionCLegCurl, getWrenNotes, removeWrenNote, clearWrenNotes } from "./lib/storage";
 import { subscribeToPush, scheduleRestPush, cancelRestPush } from "./lib/push";
@@ -1805,6 +1806,37 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
   // as regression.
   const [adjustmentsOpen, setAdjustmentsOpen] = useState(false);
   const [exerciseAdjustments, setExerciseAdjustments] = useState({});
+  // HIIT finisher: 'off' | 'active' | 'done'. When 'active', hiitStartedAt
+  // anchors the countdown to an absolute timestamp so it survives
+  // backgrounding (same pattern as the main workout timer above).
+  const HIIT_DURATION_SEC = 20 * 60;
+  const HIIT_COLOR = "#E25A75";       // coral — sits between rose and cardio orange
+  const HIIT_COLOR_BG = "#FFE3EA";
+  const [hiitState, setHiitState] = useState("off");
+  const [hiitStartedAt, setHiitStartedAt] = useState(null);
+  const [hiitElapsed, setHiitElapsed] = useState(0);
+  useEffect(() => {
+    if (hiitState !== "active" || !hiitStartedAt) return;
+    const t = setInterval(() => {
+      setHiitElapsed(Math.floor((Date.now() - hiitStartedAt) / 1000));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [hiitState, hiitStartedAt]);
+  const startHiit = () => {
+    setHiitStartedAt(Date.now());
+    setHiitElapsed(0);
+    setHiitState("active");
+  };
+  const completeHiit = () => setHiitState("done");
+  const cancelHiit = () => {
+    setHiitState("off");
+    setHiitStartedAt(null);
+    setHiitElapsed(0);
+  };
+  const hiitRemaining = Math.max(0, HIIT_DURATION_SEC - hiitElapsed);
+  const hiitProgress = Math.min(1, hiitElapsed / HIIT_DURATION_SEC);
+  const hiitMM = String(Math.floor(hiitRemaining / 60)).padStart(2, "0");
+  const hiitSS = String(hiitRemaining % 60).padStart(2, "0");
   const finishWorkout = () => {
     // Save session to history before closing
     const exMap = {};
@@ -1849,7 +1881,17 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
     }
     // Capture finishedAt explicitly so we can identify (and undo) the record.
     const finishedAt = Date.now();
-    recordSession({ workoutName: workout.name, tag: workout.tag || null, exercises: exMap, durationSec: elapsed, finishedAt });
+    recordSession({
+      workoutName: workout.name,
+      tag: workout.tag || null,
+      exercises: exMap,
+      durationSec: elapsed,
+      finishedAt,
+      // Rides along on the lift session — keeps "HIIT happened after this
+      // lift" as one record so history + Today can render the ⚡ glyph
+      // without joining across sessions. Omitted entirely when not done.
+      ...(hiitState === "done" ? { hiitFinisher: true } : {}),
+    });
     // Compute summary stats + per-exercise progression vs last session.
     const totalSets = Object.values(exMap).reduce((n, arr) => n + arr.length, 0);
     const exNames = Object.keys(exMap);
@@ -1990,7 +2032,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
     if (Object.keys(updatedPRs).length > 0) {
       save("prs", updatedPRs);
     }
-    setFinishSummary({ totalSets, exNames, durationSec: elapsed, progressions, newPRs, finishedAt });
+    setFinishSummary({ totalSets, exNames, durationSec: elapsed, progressions, newPRs, finishedAt, hiitFinisher: hiitState === "done" });
   };
 
   // Per-exercise progression/recommendation card. Used by both the
@@ -2065,7 +2107,14 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
   return (
     <div style={{ position: "fixed", inset: 0, background: c.cream, zIndex: 100, overflowY: "auto", maxWidth: 430, margin: "0 auto" }}>
       {/* sticky header with timer */}
-      <div style={{ position: "sticky", top: 0, background: c.cream, borderBottom: `1px solid ${c.line}`, padding: "20px 24px 16px", zIndex: 5 }}>
+      <div style={{
+        position: "sticky", top: 0, background: c.cream,
+        // Bottom border tints coral when the HIIT finisher is active or
+        // done — a quiet ambient signal that the lift has a finisher
+        // attached, visible from anywhere in the scroll.
+        borderBottom: hiitState !== "off" ? `2px solid ${HIIT_COLOR}` : `1px solid ${c.line}`,
+        padding: "20px 24px 16px", zIndex: 5,
+      }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <button onClick={onFinish} style={{ background: "none", border: "none", color: c.muted, cursor: "pointer", fontSize: 14, fontWeight: 500 }}>Cancel</button>
           <div style={{ textAlign: "center" }}>
@@ -2075,6 +2124,37 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
           <button onClick={finishWorkout} style={{ background: c.rosedeep, color: "white", border: "none", padding: "8px 16px", borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Finish</button>
         </div>
         <p style={{ fontSize: 16, fontWeight: 600, margin: "10px 0 0", textAlign: "center" }}>{workout.name}</p>
+        {/* HIIT status pill — only renders once the finisher is started
+            so the default header stays clean. The full toggle/card lives
+            at the bottom of the exercise list. */}
+        {hiitState === "active" && (
+          <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}>
+            <div style={{
+              display: "flex", alignItems: "center", gap: 6,
+              background: HIIT_COLOR, color: "white",
+              padding: "3px 10px", borderRadius: 999,
+              fontSize: 11, fontWeight: 700, letterSpacing: 0.3,
+              fontVariantNumeric: "tabular-nums",
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "white", opacity: 0.9 }} />
+              <Zap size={11} fill="white" />
+              HIIT {hiitMM}:{hiitSS}
+            </div>
+          </div>
+        )}
+        {hiitState === "done" && (
+          <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}>
+            <div style={{
+              display: "flex", alignItems: "center", gap: 5,
+              background: HIIT_COLOR_BG, color: HIIT_COLOR,
+              padding: "3px 10px", borderRadius: 999,
+              fontSize: 11, fontWeight: 700, letterSpacing: 0.3,
+            }}>
+              <Zap size={11} fill={HIIT_COLOR} />
+              HIIT <Check size={11} strokeWidth={3} />
+            </div>
+          </div>
+        )}
         <div style={{ display: "flex", justifyContent: "center", marginTop: 6 }}>
           <button
             onClick={() => { setBugReportMode("quick"); setShowBugReport(true); }}
@@ -2371,6 +2451,102 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
         >
           <Plus size={14} /> Add exercise
         </button>
+
+        {/* 20-min HIIT finisher — tacked onto the end of a lift.
+            Three states:
+              off    → dashed coral pill, single tap arms the finisher
+              active → coral card with live countdown + Done/Cancel
+              done   → collapsed confirmed row (✓ HIIT complete)
+            The hiitFinisher flag rides along with the session record on
+            Finish, so it shows up in history + Today. */}
+        {hiitState === "off" && (
+          <button
+            onClick={startHiit}
+            style={{
+              width: "100%", marginTop: 10, background: HIIT_COLOR_BG,
+              border: `1px dashed ${HIIT_COLOR}`, borderRadius: 14, padding: 12,
+              color: HIIT_COLOR, fontSize: 13, fontWeight: 700, cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              fontFamily: "inherit",
+            }}
+          >
+            <Zap size={14} fill={HIIT_COLOR} /> Add 20-min HIIT finisher
+          </button>
+        )}
+        {hiitState === "active" && (
+          <div style={{
+            marginTop: 10, background: HIIT_COLOR_BG,
+            border: `1px solid ${HIIT_COLOR}`, borderRadius: 16, padding: 18,
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
+          }}>
+            <p style={{
+              fontSize: 10, fontWeight: 800, color: HIIT_COLOR, margin: 0,
+              letterSpacing: 1.2, display: "flex", alignItems: "center", gap: 5,
+            }}>
+              <Zap size={11} fill={HIIT_COLOR} /> 20-MIN HIIT FINISHER
+            </p>
+            <p style={{
+              fontSize: 36, fontWeight: 700, margin: 0, color: c.charcoal,
+              fontVariantNumeric: "tabular-nums", letterSpacing: -0.5,
+            }}>
+              {hiitMM}:{hiitSS}
+            </p>
+            {/* Progress bar — fills left to right as the 20-min window
+                elapses. Done is enabled the whole time so finishing
+                early just stops the clock. */}
+            <div style={{ width: "100%", height: 4, background: "rgba(226,90,117,0.18)", borderRadius: 999, overflow: "hidden" }}>
+              <div style={{
+                width: `${hiitProgress * 100}%`, height: "100%",
+                background: HIIT_COLOR, transition: "width 0.4s linear",
+              }} />
+            </div>
+            <div style={{ display: "flex", gap: 8, width: "100%", marginTop: 4 }}>
+              <button
+                onClick={completeHiit}
+                style={{
+                  flex: 2, background: HIIT_COLOR, color: "white", border: "none",
+                  padding: "11px 0", borderRadius: 12, fontSize: 14, fontWeight: 700,
+                  cursor: "pointer", fontFamily: "inherit",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                }}
+              >
+                Done <Check size={15} strokeWidth={2.5} />
+              </button>
+              <button
+                onClick={cancelHiit}
+                style={{
+                  flex: 1, background: "transparent", color: HIIT_COLOR,
+                  border: `1px solid ${HIIT_COLOR}`, padding: "11px 0", borderRadius: 12,
+                  fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+        {hiitState === "done" && (
+          <div style={{
+            marginTop: 10, background: HIIT_COLOR_BG,
+            border: `1px solid ${HIIT_COLOR}`, borderRadius: 14,
+            padding: "12px 14px", display: "flex", alignItems: "center",
+            justifyContent: "space-between", gap: 10,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Zap size={14} fill={HIIT_COLOR} color={HIIT_COLOR} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: HIIT_COLOR }}>
+                HIIT finisher complete · 20 min
+              </span>
+            </div>
+            <button
+              onClick={cancelHiit}
+              title="Undo"
+              style={{ background: "none", border: "none", color: HIIT_COLOR, cursor: "pointer", padding: 2, display: "flex" }}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Exercise picker modal (add / replace) */}
@@ -2433,9 +2609,27 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
           <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, letterSpacing: -0.5, textAlign: "center", background: `linear-gradient(90deg, ${c.rosedeep}, ${c.rose})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
             Workout complete
           </h1>
-          <p style={{ fontSize: 14, color: c.muted, margin: "6px 0 28px", textAlign: "center" }}>
+          <p style={{ fontSize: 14, color: c.muted, margin: "6px 0 14px", textAlign: "center" }}>
             {workout.name}
           </p>
+          {/* HIIT finisher confirmation chip — matches the coral language
+              from the in-session card so the marker is unambiguous, sits
+              under the workout name as a compact "yes, this counted"
+              receipt. Hidden when no finisher was tagged. */}
+          {finishSummary.hiitFinisher && (
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
+              <div style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                background: HIIT_COLOR_BG, color: HIIT_COLOR,
+                padding: "5px 12px", borderRadius: 999,
+                fontSize: 12, fontWeight: 700, letterSpacing: 0.3,
+                border: `1px solid ${HIIT_COLOR}`,
+              }}>
+                <Zap size={12} fill={HIIT_COLOR} /> 20-min HIIT finisher · done
+              </div>
+            </div>
+          )}
+          {!finishSummary.hiitFinisher && <div style={{ height: 14 }} />}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, width: "100%", marginBottom: 24 }}>
             <div style={{ background: c.white, border: `1px solid ${c.line}`, borderRadius: 16, padding: 14, textAlign: "center" }}>
               <p style={{ fontSize: 10, fontWeight: 700, color: c.muted, margin: 0, letterSpacing: 0.5 }}>TIME</p>
@@ -2888,8 +3082,11 @@ function WeekOverview({ onClose, onSessionsChange }) {
               return (
                 <button key={s.finishedAt} onClick={() => setEditing(s)} style={{ background: c.cream, border: `1px solid ${c.line}`, borderRadius: 12, padding: "10px 12px", textAlign: "left", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
-                    <p style={{ fontSize: 13, fontWeight: 600, margin: 0, color: c.charcoal }}>{s.workoutName}</p>
-                    <p style={{ fontSize: 11, color: c.muted, margin: "2px 0 0" }}>{new Date(s.finishedAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} · {totalSets} sets</p>
+                    <p style={{ fontSize: 13, fontWeight: 600, margin: 0, color: c.charcoal, display: "flex", alignItems: "center", gap: 5 }}>
+                      {s.workoutName}
+                      {s.hiitFinisher && <Zap size={11} fill="#E25A75" color="#E25A75" />}
+                    </p>
+                    <p style={{ fontSize: 11, color: c.muted, margin: "2px 0 0" }}>{new Date(s.finishedAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} · {totalSets} sets{s.hiitFinisher ? " · HIIT" : ""}</p>
                   </div>
                   <Pencil size={14} color={c.muted} />
                 </button>
@@ -3692,6 +3889,9 @@ function SessionEditModal({ session, onClose, onSave, onDelete }) {
     const pad = (n) => String(n).padStart(2, "0");
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   });
+  // Allow flipping the HIIT-finisher flag on past sessions (e.g. forgot
+  // to mark it live, or marked it by mistake).
+  const [hiitFinisher, setHiitFinisher] = useState(!!session.hiitFinisher);
   const updateSet = (name, idx, field, val) => {
     setExercises(prev => {
       const next = { ...prev, [name]: prev[name].map((s, i) => i === idx ? { ...s, [field]: val } : s) };
@@ -3731,7 +3931,10 @@ function SessionEditModal({ session, onClose, onSave, onDelete }) {
     const [y, m, d] = dateStr.split("-").map(Number);
     const orig = new Date(session.finishedAt);
     const newDate = new Date(y, m - 1, d, orig.getHours(), orig.getMinutes(), orig.getSeconds());
-    onSave({ exercises: cleaned, finishedAt: newDate.getTime() });
+    // hiitFinisher: write true when on, null when off so the field is
+    // explicitly cleared on the stored record (matches the storage layer's
+    // patch semantics for other optional fields).
+    onSave({ exercises: cleaned, finishedAt: newDate.getTime(), hiitFinisher: hiitFinisher || null });
   };
   const inp = { padding: "8px 4px", borderRadius: 8, border: `1px solid ${c.line}`, background: c.cream, fontSize: 14, outline: "none", textAlign: "center", boxSizing: "border-box", width: "100%", minWidth: 0 };
   return (
@@ -3742,6 +3945,23 @@ function SessionEditModal({ session, onClose, onSave, onDelete }) {
           <button onClick={onClose} style={{ background: "none", border: "none", color: c.muted, cursor: "pointer" }}><X size={20} /></button>
         </div>
         <input type="date" value={dateStr} onChange={(e) => setDateStr(e.target.value)} style={{ width: "100%", padding: 12, borderRadius: 12, border: `1px solid ${c.line}`, background: c.white, fontSize: 14, marginBottom: 12, outline: "none", boxSizing: "border-box", color: c.charcoal }} />
+        {/* HIIT finisher toggle — pill that flips between off (outline)
+            and on (filled coral). Same color language as the in-session
+            card so the marker is recognizable. */}
+        <button
+          onClick={() => setHiitFinisher(v => !v)}
+          style={{
+            width: "100%", padding: "10px 14px", borderRadius: 12,
+            border: hiitFinisher ? "none" : `1px dashed #E25A75`,
+            background: hiitFinisher ? "#E25A75" : "#FFE3EA",
+            color: hiitFinisher ? "white" : "#E25A75",
+            fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+            marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          }}
+        >
+          <Zap size={13} fill={hiitFinisher ? "white" : "#E25A75"} />
+          {hiitFinisher ? "20-min HIIT finisher ✓" : "Add 20-min HIIT finisher"}
+        </button>
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
           {Object.entries(exercises).map(([name, sets]) => (
             <div key={name} style={{ background: c.white, border: `1px solid ${c.line}`, borderRadius: 14, padding: 12 }}>
@@ -4799,7 +5019,10 @@ function ProgressView({ onSessionsChange, onExerciseTap }) {
                     }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-                      <p style={{ fontSize: 14, fontWeight: 600, margin: 0, color: c.charcoal }}>{s.workoutName}</p>
+                      <p style={{ fontSize: 14, fontWeight: 600, margin: 0, color: c.charcoal, display: "flex", alignItems: "center", gap: 5 }}>
+                        {s.workoutName}
+                        {s.hiitFinisher && <Zap size={12} fill="#E25A75" color="#E25A75" />}
+                      </p>
                       <p style={{ fontSize: 11, color: c.muted, margin: 0, whiteSpace: "nowrap" }}>
                         {new Date(s.finishedAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
                       </p>

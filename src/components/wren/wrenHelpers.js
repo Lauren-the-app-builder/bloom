@@ -229,6 +229,9 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
       exercises: lastSession.exercises,
       durationMin: Math.round((lastSession.durationSec || 0) / 60),
       feedback: lastSession.feedback || null,
+      // Lauren-attached 20-min HIIT finisher (omit when absent so the
+      // payload stays tight). Wren factors this into volume/recovery.
+      ...(lastSession.hiitFinisher ? { hiitFinisher: true } : {}),
     } : null,
     // Roll up Lauren's feedback from the last 10 sessions so Wren can
     // notice patterns (e.g. "drained on every Friday session").
@@ -252,6 +255,18 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
         date: new Date(s.finishedAt).toLocaleDateString(),
         workoutName: s.workoutName,
         changes: s.exerciseAdjustments, // { [exerciseName]: 'Slowed eccentric to 3s' }
+      })),
+    // Recent lift sessions Lauren tagged with a 20-min HIIT finisher.
+    // Wren reads this to factor in true session volume and weekly
+    // conditioning load — e.g. "you've added HIIT after every Friday
+    // session for three weeks, that's a lot of accumulated intensity".
+    // Last ~14 sessions so a fortnight of pattern is visible.
+    recentHiitFinishers: sorted.slice(0, 14)
+      .filter(s => s.hiitFinisher)
+      .map(s => ({
+        date: new Date(s.finishedAt).toLocaleDateString(),
+        workoutName: s.workoutName,
+        durationMin: 20,
       })),
     schedule,
     unit,

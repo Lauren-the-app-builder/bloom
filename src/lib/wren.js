@@ -27,6 +27,7 @@ export async function askWren(message, context = {}, midWorkout = false) {
     deloadWeeks = [],
     recentSessionFeedback = [],
     recentExerciseAdjustments = [],
+    recentHiitFinishers = [],
     wrenNotes = [],
     // Nourish screen: calorie goal + weight log derived stats. Lauren wants
     // Wren aware of these so she can reference them in conversations.
@@ -63,6 +64,7 @@ export async function askWren(message, context = {}, midWorkout = false) {
         deloadWeeks,
         recentSessionFeedback,
         recentExerciseAdjustments,
+        recentHiitFinishers,
         wrenNotes,
         nourish,
         cardioThisWeek,
