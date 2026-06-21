@@ -1860,44 +1860,84 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
     };
 
     // Compare each exercise to last session, judge progress, and recommend.
+    // Total reps at a given weight — captures the case where she added a rep
+    // to any set (e.g. 8/8/7 → 8/8/8). The old logic compared MAX reps only,
+    // so adding a rep to a lower set counted as "same" even though it's
+    // clearly progress at the working weight.
+    const totalRepsAtWeight = (sets, w) =>
+      sets.filter((s) => s.weight === w).reduce((n, s) => n + (Number(s.reps) || 0), 0);
     const progressions = [];
     for (const [name, todaySets] of Object.entries(exMap)) {
       const lastEx = lastExForName(name);
       const isLower = /barbell|squat|deadlift|hip thrust|leg press|rdl/i.test(name);
       const inc = incrementFor(unit, isLower);
       const tTop = Number(targets[name]) || 0;
-      const todayMaxWeight = Math.max(...todaySets.map((s) => s.weight));
+      const isBands = isBandsExercise(name, allExercises);
+      const todayMaxWeight = isBands ? 0 : Math.max(...todaySets.map((s) => s.weight));
       const topSets = todaySets.filter((s) => s.weight === todayMaxWeight);
-      const allHit = tTop > 0 && topSets.length > 0 && topSets.every((s) => s.reps >= tTop);
+      const allHit = !isBands && tTop > 0 && topSets.length > 0 && topSets.every((s) => s.reps >= tTop);
       const noHistory = !lastEx || !lastEx.length;
       // First-time exercise: there's no target to judge against, so per-set
       // marks should be neutral rather than guessed from the rep target alone.
       const setStatuses = noHistory ? (perSetStatus[name] || []).map(() => null) : (perSetStatus[name] || []);
-      const stalled = isStalled(name);
+      const stalled = !isBands && isStalled(name);
 
-      let status, detail;
-      if (!lastEx || !lastEx.length) {
+      let status, detail, reco;
+      if (isBands) {
+        // Bands lifts (pull-ups etc.) — the app can't auto-judge progress.
+        // Combo changes aren't regression; rep count at the SAME combo is
+        // the only signal, and 10 reps at a combo is Lauren's cue to switch.
+        // Restate the data, leave the verdict to her.
+        status = "bands";
+        const topSetToday = todaySets.reduce(
+          (best, s) => (Number(s.reps) || 0) > (Number(best?.reps) || 0) ? s : best,
+          todaySets[0],
+        );
+        if (topSetToday && Array.isArray(topSetToday.bands)) {
+          detail = `${topSetToday.reps} reps on ${comboLabel(topSetToday.bands)}`;
+        }
+        reco = topSetToday && (Number(topSetToday.reps) || 0) >= 10
+          ? `${detail} — that's the cue to try a lighter combo next time.`
+          : `${detail || 'Bands logged'}. 10 reps on a combo is your cue to switch.`;
+      } else if (noHistory) {
         status = "new";
+        reco = `First time logged — next session, start at ${todayMaxWeight}${unit} as your working weight.`;
       } else {
         const lastMaxWeight = Math.max(...lastEx.map((s) => s.weight));
-        const lastMaxReps = Math.max(...lastEx.map((s) => s.reps));
-        const todayMaxReps = Math.max(...todaySets.map((s) => s.reps));
-        if (todayMaxWeight > lastMaxWeight) { status = "weight_up"; detail = `${lastMaxWeight} → ${todayMaxWeight}${unit}`; }
-        else if (todayMaxReps > lastMaxReps && todayMaxWeight >= lastMaxWeight) { status = "reps_up"; detail = `${lastMaxReps} → ${todayMaxReps} reps`; }
-        else status = "same";
+        if (todayMaxWeight > lastMaxWeight) {
+          status = "weight_up";
+          detail = `${lastMaxWeight} → ${todayMaxWeight}${unit}`;
+        } else if (todayMaxWeight === lastMaxWeight) {
+          // Same working weight — compare total reps at that weight.
+          // This catches +1 rep on any set, not just the top set, fixing
+          // the "did more reps but it said same" bug for lifts like OHP
+          // and reverse cable fly.
+          const lastTotal = totalRepsAtWeight(lastEx, lastMaxWeight);
+          const todayTotal = totalRepsAtWeight(todaySets, todayMaxWeight);
+          if (todayTotal > lastTotal) {
+            status = "reps_up";
+            detail = `${lastTotal} → ${todayTotal} reps @ ${todayMaxWeight}${unit}`;
+          } else {
+            status = "same";
+          }
+        } else {
+          // Dropped weight — usually intentional (technique adjustment).
+          // Don't call it regression; the adjustments flow on this screen
+          // handles that explanation separately.
+          status = "same";
+        }
+
+        if (stalled) reco = `Stalled 3 sessions at ${todayMaxWeight}${unit}. Try a deload (~10% lighter) or ask Wren to swap it.`;
+        else if (status === "weight_up") reco = `Up to ${todayMaxWeight}${unit}. Settle in and aim for ${tTop || "the top of your range"} reps on every set.`;
+        else if (allHit) reco = `You maxed the rep range — add ${inc}${unit} next time.`;
+        else if (status === "reps_up") reco = `More reps at ${todayMaxWeight}${unit}. Keep adding reps, then bump the weight.`;
+        else reco = `Stay at ${todayMaxWeight}${unit} and add a rep per set next time.`;
       }
 
       // On track if you progressed, logged a first session, or maxed the rep
-      // range (ready to go up). A stall always counts as off track.
-      const onTrack = !stalled && (status === "weight_up" || status === "reps_up" || status === "new" || allHit);
-
-      let reco;
-      if (stalled) reco = `Stalled 3 sessions at ${todayMaxWeight}${unit}. Try a deload (~10% lighter) or ask Wren to swap it.`;
-      else if (status === "new") reco = `First time logged — next session, start at ${todayMaxWeight}${unit} as your working weight.`;
-      else if (status === "weight_up") reco = `Up to ${todayMaxWeight}${unit}. Settle in and aim for ${tTop || "the top of your range"} reps on every set.`;
-      else if (allHit) reco = `You maxed the rep range — add ${inc}${unit} next time.`;
-      else if (status === "reps_up") reco = `More reps at ${todayMaxWeight}${unit}. Keep adding reps, then bump the weight.`;
-      else reco = `Stay at ${todayMaxWeight}${unit} and add a rep per set next time.`;
+      // range (ready to go up). Bands count as on-track (we don't auto-judge,
+      // so we don't auto-fail). A stall always counts as off track.
+      const onTrack = !stalled && (status === "weight_up" || status === "reps_up" || status === "new" || status === "bands" || allHit);
 
       progressions.push({ name, status, detail, sets: setStatuses, onTrack, reco });
     }
@@ -2433,6 +2473,10 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
                 else if (p.status === "weight_up") badge = { label: `↑ ${p.detail}`, fg: "#2e7d4a", bg: "#e6f4ea" };
                 else if (p.status === "reps_up") badge = { label: `↑ ${p.detail}`, fg: "#2e7d4a", bg: "#e6f4ea" };
                 else if (p.status === "new") badge = { label: "New", fg: c.rosedeep, bg: c.blushLight };
+                // Bands — the app can't auto-judge against weight, so we
+                // show the data and a neutral "Bands" tag instead of a
+                // verdict. (Pull-ups, assisted pull-ups, etc.)
+                else if (p.status === "bands") badge = { label: p.detail || "Bands", fg: c.rosedeep, bg: c.blushLight };
                 else badge = { label: "—", fg: c.muted, bg: "transparent" };
 
                 return (
