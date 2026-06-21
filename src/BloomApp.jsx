@@ -2460,18 +2460,25 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
             The hiitFinisher flag rides along with the session record on
             Finish, so it shows up in history + Today. */}
         {hiitState === "off" && (
-          <button
-            onClick={startHiit}
-            style={{
-              width: "100%", marginTop: 10, background: HIIT_COLOR_BG,
-              border: `1px dashed ${HIIT_COLOR}`, borderRadius: 14, padding: 12,
-              color: HIIT_COLOR, fontSize: 13, fontWeight: 700, cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-              fontFamily: "inherit",
-            }}
-          >
-            <Zap size={14} fill={HIIT_COLOR} /> Add 20-min HIIT finisher
-          </button>
+          // Centered gradient pill — same visual language as the Today
+          // "Start this workout" button (blush → deep) but coral-shifted
+          // so it reads as HIIT, not "start the lift". Sized to its own
+          // content so it doesn't compete with the Add exercise row above.
+          <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
+            <button
+              onClick={startHiit}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 7,
+                padding: "10px 20px", borderRadius: 999, border: "none",
+                background: `linear-gradient(135deg, ${c.blush} 0%, ${HIIT_COLOR} 100%)`,
+                color: "white", fontSize: 13, fontWeight: 700,
+                boxShadow: `0 4px 12px rgba(226,90,117,0.30)`,
+                cursor: "pointer", fontFamily: "inherit",
+              }}
+            >
+              <Zap size={14} fill="white" color="white" /> Add 20-min HIIT finisher
+            </button>
+          </div>
         )}
         {hiitState === "active" && (
           <div style={{
