@@ -93,7 +93,7 @@ import {
   Scale,
   Zap,
 } from "lucide-react";
-import { useLocalState, recordSession, getSessions, getLastSession, updateSession, deleteSession, load, save, getActiveProgram, getMissedSessions, ensureSessionAOrder, ensureSessionBPulldown, ensureSessionCLegCurl, getWrenNotes, removeWrenNote, clearWrenNotes } from "./lib/storage";
+import { useLocalState, recordSession, getSessions, getLastSession, getBaselineSessions, updateSession, deleteSession, load, save, getActiveProgram, getMissedSessions, ensureSessionAOrder, ensureSessionBPulldown, ensureSessionCLegCurl, getWrenNotes, removeWrenNote, clearWrenNotes } from "./lib/storage";
 import { subscribeToPush, scheduleRestPush, cancelRestPush } from "./lib/push";
 import WrenView from "./components/wren/WrenView";
 import TodayView from "./components/wren/TodayView";
@@ -1082,7 +1082,7 @@ function WorkoutPreview({ workout, onClose, onStart, onBackfill, onEdit, onExerc
               const ex = allExercises.find((e) => e.name === exName);
               // Search across all sessions for this exercise (not just same-workout).
               const lastEx = last?.exercises?.[exName] || (() => {
-                const all = getSessions().filter(s => !(s.workoutName || '').includes('(past entry)')).sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
+                const all = getBaselineSessions();
                 for (const s of all) { if (s.exercises?.[exName]?.length) return s.exercises[exName]; }
                 return null;
               })();
@@ -1253,7 +1253,9 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
   };
   // For each exercise, find the most recent session containing it (across ALL
   // workouts, not just this one). Falls back to `last` (same-workout session).
-  const allSessionsForLookup = getSessions().filter(s => !(s.workoutName || '').includes('(past entry)')).sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
+  // Deload sessions are excluded so an easy week never seeds the working
+  // weight for the next real session.
+  const allSessionsForLookup = getBaselineSessions();
   const lastExForName = (name) => {
     if (last?.exercises?.[name]) return last.exercises[name];
     for (const s of allSessionsForLookup) {
@@ -1801,6 +1803,9 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
   // mood is one of MOOD_OPTIONS below; notes is free text.
   const [feedbackMood, setFeedbackMood] = useState(null);
   const [feedbackNotes, setFeedbackNotes] = useState('');
+  // Deload day — when on, the session still counts but is excluded from
+  // "previous performance" recall so next time seeds from last week's numbers.
+  const [markDeload, setMarkDeload] = useState(false);
   // Per-exercise technique adjustments — { [exerciseName]: 'Slowed eccentric to 3s' }.
   // Wren reads these so an intentional weight/rep drop doesn't get flagged
   // as regression.
@@ -1896,9 +1901,9 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
     const totalSets = Object.values(exMap).reduce((n, arr) => n + arr.length, 0);
     const exNames = Object.keys(exMap);
     // History (incl. today, already recorded above) for stall detection.
-    const histAll = getSessions()
-      .filter(s => !(s.workoutName || '').includes('(past entry)'))
-      .sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
+    // Deloads are excluded — an intentionally-light week isn't a plateau and
+    // shouldn't read as "no progress" against the prior real session.
+    const histAll = getBaselineSessions();
     const maxW = (setsArr) => Math.max(...setsArr.map(x => Number(x.weight) || 0));
     const sumReps = (setsArr) => setsArr.reduce((n, x) => n + (Number(x.reps) || 0), 0);
     // Same definition as Wren's plateau detector: last 3 sessions, same top
@@ -2810,6 +2815,26 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
             />
           </div>
 
+          {/* Deload toggle — mark a light/off day. It still counts as done,
+              but won't be pulled as "last session" next time this workout
+              comes around. */}
+          <button
+            onClick={() => setMarkDeload(v => !v)}
+            style={{
+              width: "100%", padding: "12px 14px", borderRadius: 14,
+              border: markDeload ? "none" : `1px dashed ${c.rosedeep}`,
+              background: markDeload ? c.rosedeep : c.white,
+              color: markDeload ? "white" : c.rosedeep,
+              fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+              marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            }}
+          >
+            {markDeload ? "Deload day ✓ — won't seed next time" : "Mark this as a deload"}
+          </button>
+          <p style={{ fontSize: 11, color: c.muted, margin: "0 0 14px", lineHeight: 1.5, textAlign: "center" }}>
+            Counts toward your streak, but next time this workout pulls last week's numbers instead.
+          </p>
+
           <button
             onClick={() => {
               // Persist any feedback + adjustments to the session record
@@ -2831,11 +2856,14 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
               if (Object.keys(cleanedAdjustments).length) {
                 patch.exerciseAdjustments = cleanedAdjustments;
               }
+              // Always send deload (true/false) so unchecking clears the flag.
+              patch.deload = markDeload || null;
               if (Object.keys(patch).length && finishSummary?.finishedAt) {
                 updateSession(finishSummary.finishedAt, patch);
               }
               setFeedbackMood(null);
               setFeedbackNotes('');
+              setMarkDeload(false);
               setExerciseAdjustments({});
               setAdjustmentsOpen(false);
               setFinishSummary(null);
@@ -3101,8 +3129,9 @@ function WeekOverview({ onClose, onSessionsChange }) {
                     <p style={{ fontSize: 13, fontWeight: 600, margin: 0, color: c.charcoal, display: "flex", alignItems: "center", gap: 5 }}>
                       {s.workoutName}
                       {s.hiitFinisher && <Zap size={11} fill="#E25A75" color="#E25A75" />}
+                      {s.deload && <span style={{ fontSize: 9, fontWeight: 700, color: c.rosedeep, background: c.blushLight, borderRadius: 6, padding: "2px 6px", letterSpacing: 0.4 }}>DELOAD</span>}
                     </p>
-                    <p style={{ fontSize: 11, color: c.muted, margin: "2px 0 0" }}>{new Date(s.finishedAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} · {totalSets} sets{s.hiitFinisher ? " · HIIT" : ""}</p>
+                    <p style={{ fontSize: 11, color: c.muted, margin: "2px 0 0" }}>{new Date(s.finishedAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} · {totalSets} sets{s.hiitFinisher ? " · HIIT" : ""}{s.deload ? " · deload" : ""}</p>
                   </div>
                   <Pencil size={14} color={c.muted} />
                 </button>
@@ -3908,6 +3937,10 @@ function SessionEditModal({ session, onClose, onSave, onDelete }) {
   // Allow flipping the HIIT-finisher flag on past sessions (e.g. forgot
   // to mark it live, or marked it by mistake).
   const [hiitFinisher, setHiitFinisher] = useState(!!session.hiitFinisher);
+  // Deload flag — a deload session still counts as done, but is excluded from
+  // "previous performance" recall so the next time this workout comes around
+  // it pulls last week's real numbers, not the light deload.
+  const [deload, setDeload] = useState(!!session.deload);
   const updateSet = (name, idx, field, val) => {
     setExercises(prev => {
       const next = { ...prev, [name]: prev[name].map((s, i) => i === idx ? { ...s, [field]: val } : s) };
@@ -3950,7 +3983,7 @@ function SessionEditModal({ session, onClose, onSave, onDelete }) {
     // hiitFinisher: write true when on, null when off so the field is
     // explicitly cleared on the stored record (matches the storage layer's
     // patch semantics for other optional fields).
-    onSave({ exercises: cleaned, finishedAt: newDate.getTime(), hiitFinisher: hiitFinisher || null });
+    onSave({ exercises: cleaned, finishedAt: newDate.getTime(), hiitFinisher: hiitFinisher || null, deload: deload || null });
   };
   const inp = { padding: "8px 4px", borderRadius: 8, border: `1px solid ${c.line}`, background: c.cream, fontSize: 14, outline: "none", textAlign: "center", boxSizing: "border-box", width: "100%", minWidth: 0 };
   return (
@@ -3978,6 +4011,26 @@ function SessionEditModal({ session, onClose, onSave, onDelete }) {
           <Zap size={13} fill={hiitFinisher ? "white" : "#E25A75"} />
           {hiitFinisher ? "20-min HIIT finisher ✓" : "Add 20-min HIIT finisher"}
         </button>
+        {/* Deload toggle — flips a session between counting-as-baseline and
+            counting-as-done-only. When on, this session still shows in history
+            and streaks but is skipped when the app pulls "last session" to
+            seed your next workout. */}
+        <button
+          onClick={() => setDeload(v => !v)}
+          style={{
+            width: "100%", padding: "10px 14px", borderRadius: 12,
+            border: deload ? "none" : `1px dashed ${c.rosedeep}`,
+            background: deload ? c.rosedeep : c.blushLight,
+            color: deload ? "white" : c.rosedeep,
+            fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+            marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          }}
+        >
+          {deload ? "Deload — counts, won't seed next time ✓" : "Mark as deload"}
+        </button>
+        <p style={{ fontSize: 11, color: c.muted, margin: "0 0 12px", lineHeight: 1.5, textAlign: "center" }}>
+          Deloads still count as done — they're just skipped when pulling your last performance.
+        </p>
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
           {Object.entries(exercises).map(([name, sets]) => (
             <div key={name} style={{ background: c.white, border: `1px solid ${c.line}`, borderRadius: 14, padding: 12 }}>

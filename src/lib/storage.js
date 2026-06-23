@@ -67,14 +67,36 @@ export function getSessions() {
   return load('sessions', []);
 }
 
+// A deload session still counts as "done" (streaks, totals, history) but is
+// intentionally light, so it must NOT be pulled as the performance baseline
+// the next time the same workout comes around — we want last week's real
+// numbers instead. Used to exclude deloads from every "previous performance"
+// / progressive-overload lookup, while leaving completion counts untouched.
+export function isDeloadSession(s) {
+  return !!(s && s.deload);
+}
+
+// Sessions usable as a performance baseline: real workouts only, deloads and
+// focus-lift "(past entry)" stubs filtered out, newest first. This is the
+// canonical source for "what did I do last time" seeding/recall.
+export function getBaselineSessions() {
+  return load('sessions', [])
+    .filter(s => !(s.workoutName || '').includes('(past entry)'))
+    .filter(s => !isDeloadSession(s))
+    .sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
+}
+
 // Most recent recorded session for a given workout name (or null).
-// Skips focus-lift past entries which aren't full workouts.
+// Skips focus-lift past entries which aren't full workouts, and deload
+// sessions (see isDeloadSession) so progressive overload reads last week's
+// real performance instead of an intentionally-light deload.
 export function getLastSession(workoutName) {
   const list = load('sessions', []);
   let best = null;
   for (const s of list) {
     if (s.workoutName !== workoutName) continue;
     if ((s.workoutName || '').includes('(past entry)')) continue;
+    if (isDeloadSession(s)) continue;
     if (!best || (s.finishedAt || 0) > (best.finishedAt || 0)) best = s;
   }
   return best;

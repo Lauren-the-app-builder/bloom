@@ -77,6 +77,9 @@ export async function pullAll() {
         // sidecar so history + Today can render the ⚡ glyph and so Wren
         // sees it in her context block.
         ...(s.hiit_finisher ? { hiitFinisher: true } : {}),
+        // Deload flag — session counts as done but is excluded from
+        // "previous performance" recall (see isDeloadSession in storage.js).
+        ...(s.deload ? { deload: true } : {}),
       })));
   }
 
@@ -189,6 +192,9 @@ const pushers = {
       // false so toggling off in SessionEditModal clears the remote
       // column (otherwise an old `true` would survive).
       hiit_finisher: !!s.hiitFinisher,
+      // Persist the deload flag. Sent even when false so toggling off in
+      // SessionEditModal clears the remote column.
+      deload: !!s.deload,
     }));
     // Write IDs back to localStorage so future pushes are stable.
     saveKV('sessions', list.map((s, i) => ({ ...s, id: rows[i].id })));

@@ -232,6 +232,10 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
       // Lauren-attached 20-min HIIT finisher (omit when absent so the
       // payload stays tight). Wren factors this into volume/recovery.
       ...(lastSession.hiitFinisher ? { hiitFinisher: true } : {}),
+      // Deload day — light/off session that still counts. Flag it so Wren
+      // reads the lower numbers as intentional, not a regression, and
+      // doesn't use them as the progression baseline.
+      ...(lastSession.deload ? { deload: true } : {}),
     } : null,
     // Roll up Lauren's feedback from the last 10 sessions so Wren can
     // notice patterns (e.g. "drained on every Friday session").
