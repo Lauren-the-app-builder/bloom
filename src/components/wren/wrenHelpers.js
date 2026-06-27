@@ -1,6 +1,6 @@
 // Pure utility functions for the Wren coaching system.
 
-import { load, isDeloadWeek, getDeloadWeeks, getWrenNotes, getCalorieGoal, getCurrentWeight, getWeeklyAvgWeight, getWeightChange, getWeightLog, getNourishPhase, getCardioSessionsForWeek } from '../../lib/storage';
+import { load, isDeloadWeek, getDeloadWeeks, getWrenNotes, getCalorieGoal, getCurrentWeight, getWeeklyAvgWeight, getWeeklyAvgSeries, getWeightChange, getWeightLog, getNourishPhase, getCardioSessionsForWeek } from '../../lib/storage';
 import { comboKey, comboLabel } from './tokens';
 
 // ---------- Plateau detection ----------
@@ -302,6 +302,13 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
           tags: cur.tags ? Object.keys(cur.tags).filter((k) => cur.tags[k]) : [],
         } : null,
         weight_weekly_avg: getWeeklyAvgWeight(),
+        // Smoothed week-over-week trend (last 8 weekly averages, oldest→newest).
+        // This cancels daily water noise — the series Wren should reason over to
+        // judge cut/maintain direction, not single readings. Each: { week, avg }.
+        weekly_avg_trend: getWeeklyAvgSeries(8).map((p) => ({
+          week: new Date(p.weekStart).toLocaleDateString(),
+          avg: p.avg,
+        })),
         weight_change_daily: getWeightChange('daily'),
         weight_change_weekly: getWeightChange('weekly'),
         weight_change_monthly: getWeightChange('monthly'),

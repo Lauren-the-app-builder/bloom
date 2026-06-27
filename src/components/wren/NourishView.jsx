@@ -14,6 +14,7 @@ import {
   getWeightLog,
   getCurrentWeight,
   getWeeklyAvgWeight,
+  getWeeklyAvgSeries,
   getWeightChange,
   hasWeightToday,
   replaceWeightForDate,
@@ -60,6 +61,7 @@ export default function NourishView({ onOpenSettings }) {
   const current = getCurrentWeight();
   const weeklyAvg = getWeeklyAvgWeight();
   const log = getWeightLog();
+  const weeklySeries = getWeeklyAvgSeries(8); // last 8 weekly averages
   const dailyChange = getWeightChange('daily');
   const weeklyChange = getWeightChange('weekly');
   const monthlyChange = getWeightChange('monthly');
@@ -175,6 +177,32 @@ export default function NourishView({ onOpenSettings }) {
       ts: p.ts,
     }));
   })();
+
+  // Weekly-average trend chart — one point per week (Monday-anchored avg),
+  // last 8 weeks. This is the smoothed view that cancels daily water noise, so
+  // a period week or a restaurant spike doesn't read as a real gain. Same SVG
+  // coordinate approach as the sparkline.
+  const weeklyChart = (() => {
+    if (weeklySeries.length < 2) return null;
+    const vals = weeklySeries.map((p) => p.avg);
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const span = Math.max(0.5, max - min);
+    const VBW = 320;
+    const VBH = 60;
+    const PAD_Y = 8;
+    const stepX = VBW / (weeklySeries.length - 1);
+    return weeklySeries.map((p, i) => ({
+      x: Math.round(i * stepX),
+      y: Math.round(VBH - PAD_Y - ((p.avg - min) / span) * (VBH - PAD_Y * 2)),
+      avg: p.avg,
+      weekStart: p.weekStart,
+    }));
+  })();
+  // Week-over-week delta between the two most recent weekly averages.
+  const weeklyAvgDelta = weeklySeries.length >= 2
+    ? +(weeklySeries[weeklySeries.length - 1].avg - weeklySeries[weeklySeries.length - 2].avg).toFixed(1)
+    : null;
 
   // Dates that bracket the sparkline.
   const sparkLeftDate = sparkline
@@ -449,6 +477,57 @@ export default function NourishView({ onOpenSettings }) {
               textAlign: 'center',
             }}>
               Log a few weigh-ins to see your trend.
+            </p>
+          )}
+
+          {/* Weekly average trend — each point is one week's average weight.
+              Smooths out daily water swings so the real direction is visible. */}
+          <hr style={divider} />
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
+            <p style={{
+              fontSize: 11, color: c.rosedeep, letterSpacing: 0.5,
+              textTransform: 'uppercase', fontWeight: 600, margin: 0,
+            }}>Weekly average trend</p>
+            {weeklyAvgDelta !== null && (
+              <span style={{ fontSize: 12, fontWeight: 600, color: N.mutedText }}>
+                {weeklyAvgDelta > 0 ? '+' : ''}{weeklyAvgDelta.toFixed(1)} lbs vs last week
+              </span>
+            )}
+          </div>
+          {weeklyChart && (
+            <>
+              <svg width="100%" height="60" viewBox="0 0 320 60" preserveAspectRatio="none">
+                <polyline
+                  points={weeklyChart.map((p) => `${p.x},${p.y}`).join(' ')}
+                  fill="none" stroke={c.rosedeep} strokeWidth="2"
+                  strokeLinecap="round" strokeLinejoin="round"
+                />
+                {weeklyChart.map((p, i) => (
+                  <circle
+                    key={i}
+                    cx={p.x}
+                    cy={p.y}
+                    r={i === weeklyChart.length - 1 ? 4 : 3.5}
+                    fill={i === weeklyChart.length - 1 ? c.rosedeep : N.cardBorder}
+                  />
+                ))}
+              </svg>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, marginBottom: 14 }}>
+                <span style={{ fontSize: 11, color: N.hintText }}>
+                  {new Date(weeklyChart[0].weekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </span>
+                <span style={{ fontSize: 11, color: N.hintText }}>
+                  {weeklySeries[weeklySeries.length - 1].avg.toFixed(1)} lbs this week
+                </span>
+              </div>
+            </>
+          )}
+          {!weeklyChart && (
+            <p style={{
+              fontSize: 12, color: N.hintText, margin: '14px 0',
+              textAlign: 'center',
+            }}>
+              Two weeks of weigh-ins will unlock your weekly trend.
             </p>
           )}
 

@@ -415,6 +415,40 @@ export function getWeeklyAvgWeight() {
   const sum = inWeek.reduce((n, r) => n + r.weight, 0);
   return +(sum / inWeek.length).toFixed(1);
 }
+// Midnight of the Monday that opens the calendar week containing `ts`.
+function mondayOfWeek(ts) {
+  const d = new Date(Number(ts) || Date.now());
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay() === 0 ? 6 : d.getDay() - 1; // Mon=0..Sun=6
+  d.setDate(d.getDate() - day);
+  return d.getTime();
+}
+// Per-week average weight, oldest→newest, one point per week that has at
+// least one reading. Each entry: { weekStart (ms, Monday midnight), avg
+// (rounded 0.1), count }. This is the smoothed trend that cancels daily water
+// noise — the right series for spotting a real cut/maintain direction and the
+// one Wren should reason over instead of single readings. `weeks` caps how
+// far back we return (most recent N weeks); pass 0/undefined for all of it.
+export function getWeeklyAvgSeries(weeks = 0) {
+  const log = getWeightLog();
+  if (!log.length) return [];
+  const buckets = new Map(); // weekStart -> { sum, count }
+  for (const r of log) {
+    const ws = mondayOfWeek(r.ts);
+    const b = buckets.get(ws) || { sum: 0, count: 0 };
+    b.sum += r.weight;
+    b.count += 1;
+    buckets.set(ws, b);
+  }
+  const series = [...buckets.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([weekStart, b]) => ({
+      weekStart,
+      avg: +(b.sum / b.count).toFixed(1),
+      count: b.count,
+    }));
+  return weeks > 0 ? series.slice(-weeks) : series;
+}
 // Signed weight change over a window. `period` is 'daily' | 'weekly' |
 // 'monthly'. Compares the most recent reading against the most recent
 // reading at-or-before (now - window). Returns null if either side is

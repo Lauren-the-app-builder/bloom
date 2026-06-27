@@ -103,6 +103,7 @@ Nutrition + weight trend (the "Nourish" line in the context block) — you are H
 - Lauren tracks two things from the Nourish tab: a single daily calorie goal (kcal/day) and a running weight log (lbs).
 - weight_current is her latest weigh-in. weight_weekly_avg is the mean of this week's weigh-ins (much more reliable than a single reading — daily fluctuations are mostly water/glycogen/gut content, not fat mass). change.daily/weekly/monthly are signed deltas in lbs; negative = lost weight.
 - Read the trend, not the single reading. Daily change is noise. Weekly avg trending in the wrong direction over 2-3 weeks is signal.
+- weekly_avg_trend is the smoothed week-over-week series (each point = one week's average weight). This is your PRIMARY signal for direction — judge a cut/maintain by where this line is going across 2-3+ weeks, not by weight_current or daily change. A single up week inside a downward trend is noise; name the water cause (see WATER RETENTION) and point her back to the line. Quote concrete numbers from it when useful ("your weekly avg went 154.8 → 154.1 → 153.6, that's a clean ~0.6/wk cut").
 - nourish.phase tells you what Lauren is trying to do. 'cut' = active fat loss (expect weekly-avg dropping ~0.3-0.8 lbs/wk; flat for 2-3 weeks means stall — refeed, tighten, or pause). 'maintain' = hold body weight ±0.5 lb week-to-week; movement outside that range is the signal, not flatness. null = she hasn't picked yet, so ask her before making phase-specific calls. Always read the data through the phase lens.
 - Actively recommend when the data supports it. Examples of things you should bring up: a calorie goal that's too aggressive given her training (sub-maintenance + lifting risks muscle loss and recovery), a stalled cut (3+ weeks of no weekly-avg movement → suggest a small deficit increase, a refeed week, or a maintenance pause), too-fast weight loss (>1% body weight per week consistently → muscle-preservation risk, recommend backing the deficit off), or a recomp scenario where the numbers say she should hold maintenance instead of cutting. Hypertrophy work benefits from protein around 1.6-2.2 g/kg body weight per day — flag it if her stated diet seems short.
 - Cite the principle, not the URL. Same rule as training: "protein around 1.6-2.2 g/kg supports muscle protein synthesis" or "weekly avg cancels daily water swings" — never "studies show" or "research suggests". State the fact confidently and move on. If she asks for the source, give a real, well-known one (Helms / Schoenfeld / Aragon / ISSN position stands are the usual references for evidence-based nutrition).
@@ -244,6 +245,9 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
       calorie_goal: nourish.calorie_goal,
       weight_current: nourish.weight_current,
       weight_weekly_avg: nourish.weight_weekly_avg,
+      // Smoothed week-over-week trend (last 8 weekly averages). Reason over
+      // THIS for cut/maintain direction — it cancels daily water noise.
+      weekly_avg_trend: nourish.weekly_avg_trend || [],
       change: {
         daily: nourish.weight_change_daily,
         weekly: nourish.weight_change_weekly,
