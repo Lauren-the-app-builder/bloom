@@ -328,33 +328,64 @@ function localDateKey(ts) {
   d.setHours(0, 0, 0, 0);
   return d.toISOString().slice(0, 10);
 }
+// Context tags Lauren can attach to a weigh-in. These don't change the
+// number — they tell Wren WHY the scale might be up so a spike reads as water,
+// not fat: `period` (luteal-phase / menstrual water retention), `alcohol`
+// (drank the day before — sodium + glycogen rebound), `restaurant` (ate out —
+// restaurant food is salt-heavy). Stored only when true to keep entries lean;
+// missing = false. Always returns a full object so callers can read flags
+// without guarding.
+const WEIGH_IN_TAG_KEYS = ['period', 'alcohol', 'restaurant'];
+function normalizeWeighInTags(src) {
+  const out = {};
+  for (const k of WEIGH_IN_TAG_KEYS) out[k] = !!(src && src[k]);
+  return out;
+}
+// True if any context tag is set — used to decide whether to persist a `tags`
+// object on the entry at all.
+function hasAnyTag(tags) {
+  return WEIGH_IN_TAG_KEYS.some((k) => tags[k]);
+}
 export function getWeightLog() {
   const v = load('nourishWeightLog', []);
   if (!Array.isArray(v)) return [];
   return v
-    .map((r) => ({ ts: Number(r?.ts) || 0, weight: Number(r?.weight) || 0 }))
+    .map((r) => ({
+      ts: Number(r?.ts) || 0,
+      weight: Number(r?.weight) || 0,
+      // Older entries predate tags — normalize so every row has the full
+      // shape and the UI/Wren never have to null-check.
+      tags: normalizeWeighInTags(r?.tags),
+    }))
     .filter((r) => r.ts > 0 && r.weight > 0)
     .sort((a, b) => a.ts - b.ts);
 }
+// Build the persisted entry, attaching `tags` only when at least one is set.
+function makeWeighIn(weight, ts, tags) {
+  const norm = normalizeWeighInTags(tags);
+  const entry = { ts: Number(ts) || Date.now(), weight };
+  if (hasAnyTag(norm)) entry.tags = norm;
+  return entry;
+}
 // Append a new reading. Does NOT dedupe — call replaceWeightForDate first
 // if you want the same-day overwrite behavior the UI uses.
-export function addWeight(weight, ts = Date.now()) {
+export function addWeight(weight, ts = Date.now(), tags = null) {
   const w = Number(weight);
   if (!Number.isFinite(w) || w <= 0) return getWeightLog();
   const list = getWeightLog();
-  list.push({ ts: Number(ts) || Date.now(), weight: w });
+  list.push(makeWeighIn(w, ts, tags));
   list.sort((a, b) => a.ts - b.ts);
   save('nourishWeightLog', list);
   return list;
 }
 // Replace any existing entries for the same local calendar day as `ts` with
 // a single new reading. Returns the new log.
-export function replaceWeightForDate(weight, ts = Date.now()) {
+export function replaceWeightForDate(weight, ts = Date.now(), tags = null) {
   const w = Number(weight);
   if (!Number.isFinite(w) || w <= 0) return getWeightLog();
   const targetKey = localDateKey(ts);
   const filtered = getWeightLog().filter((r) => localDateKey(r.ts) !== targetKey);
-  filtered.push({ ts: Number(ts) || Date.now(), weight: w });
+  filtered.push(makeWeighIn(w, ts, tags));
   filtered.sort((a, b) => a.ts - b.ts);
   save('nourishWeightLog', filtered);
   return filtered;

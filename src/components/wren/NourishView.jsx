@@ -4,7 +4,7 @@
 // before overwriting.
 
 import React, { useState } from 'react';
-import { Settings, Sparkles, Pencil, X } from 'lucide-react';
+import { Settings, Sparkles, Pencil, X, Droplet, Wine, Utensils } from 'lucide-react';
 import { c } from './tokens';
 import {
   getCalorieGoal,
@@ -71,6 +71,11 @@ export default function NourishView({ onOpenSettings }) {
   const [editingGoal, setEditingGoal] = useState(false);
   const [weightDraft, setWeightDraft] = useState('');
   const [changeTab, setChangeTab] = useState('daily');
+  // Context tags for today's weigh-in. They don't change the number — they
+  // tell Wren why the scale might read high (water, not fat). Reset after a
+  // successful log.
+  const [weighInTags, setWeighInTags] = useState({ period: false, alcohol: false, restaurant: false });
+  const toggleTag = (key) => setWeighInTags((t) => ({ ...t, [key]: !t[key] }));
 
   const today = new Date();
   const headerDate = today.toLocaleDateString('en-US', {
@@ -114,6 +119,21 @@ export default function NourishView({ onOpenSettings }) {
     setEditingGoal(false);
   };
 
+  // Sanitize free-text weight input so decimals work reliably on every mobile
+  // keyboard. type="number" silently drops a typed period on some Android /
+  // locale setups, so we use type="text" + inputMode="decimal" and filter
+  // here: accept digits and a single decimal point, treat a comma as a point
+  // (European keyboards), strip everything else.
+  const onWeightChange = (raw) => {
+    let v = String(raw).replace(',', '.').replace(/[^0-9.]/g, '');
+    const firstDot = v.indexOf('.');
+    if (firstDot !== -1) {
+      // Keep only the first dot; drop any later ones.
+      v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, '');
+    }
+    setWeightDraft(v);
+  };
+
   const logToday = () => {
     const n = Number(weightDraft);
     if (!Number.isFinite(n) || n <= 0) return;
@@ -122,11 +142,12 @@ export default function NourishView({ onOpenSettings }) {
         "You already logged a weight today. Replace it with this new reading?"
       );
       if (!ok) return;
-      replaceWeightForDate(n);
+      replaceWeightForDate(n, Date.now(), weighInTags);
     } else {
-      addWeight(n);
+      addWeight(n, Date.now(), weighInTags);
     }
     setWeightDraft('');
+    setWeighInTags({ period: false, alcohol: false, restaurant: false });
     refresh();
   };
 
@@ -366,6 +387,15 @@ export default function NourishView({ onOpenSettings }) {
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
             <span style={bigNumber}>{current ? current.weight.toFixed(1) : '—'}</span>
             <span style={bigUnit}>{current ? currentDateLabel : 'lbs'}</span>
+            {/* Echo the context tags on the latest reading so Lauren sees they
+                were saved (and Wren has them). */}
+            {current && current.tags && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 2 }}>
+                {current.tags.period && <Droplet size={13} color={c.rosedeep} strokeWidth={2} />}
+                {current.tags.alcohol && <Wine size={13} color={c.rosedeep} strokeWidth={2} />}
+                {current.tags.restaurant && <Utensils size={13} color={c.rosedeep} strokeWidth={2} />}
+              </span>
+            )}
           </div>
 
           {/* Weekly avg */}
@@ -464,14 +494,45 @@ export default function NourishView({ onOpenSettings }) {
 
           {/* Log input */}
           <hr style={divider} />
+          {/* Context tags — tap any that apply to today's weigh-in. They don't
+              change the number; they give Wren the "why" behind a high reading
+              so she reads it as water, not fat. */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+            {[
+              { id: 'period', label: 'On my period', Icon: Droplet },
+              { id: 'alcohol', label: 'Alcohol yesterday', Icon: Wine },
+              { id: 'restaurant', label: 'Ate out', Icon: Utensils },
+            ].map(({ id, label, Icon }) => {
+              const active = weighInTags[id];
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => toggleTag(id)}
+                  aria-pressed={active}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    padding: '7px 11px', borderRadius: 999, cursor: 'pointer',
+                    fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
+                    border: active ? 'none' : `0.5px solid ${N.cardBorder}`,
+                    background: active ? c.rosedeep : N.tileBg,
+                    color: active ? '#fff' : N.darkText,
+                  }}
+                >
+                  <Icon size={13} color={active ? '#fff' : c.rosedeep} strokeWidth={2} />
+                  {label}
+                </button>
+              );
+            })}
+          </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <input
-              type="number"
+              type="text"
               inputMode="decimal"
-              step="0.1"
               placeholder="Log today's weight…"
               value={weightDraft}
-              onChange={(e) => setWeightDraft(e.target.value)}
+              onChange={(e) => onWeightChange(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') logToday(); }}
               style={inputStyle}
             />
             <button

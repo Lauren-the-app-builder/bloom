@@ -296,12 +296,27 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
         weight_current: cur ? {
           weight: cur.weight,
           date: new Date(cur.ts).toLocaleDateString(),
+          // Context tags Lauren attached to this weigh-in (water-retention
+          // cues, not fat): on her period, drank alcohol the day before, ate
+          // at a restaurant. Only the true ones are surfaced.
+          tags: cur.tags ? Object.keys(cur.tags).filter((k) => cur.tags[k]) : [],
         } : null,
         weight_weekly_avg: getWeeklyAvgWeight(),
         weight_change_daily: getWeightChange('daily'),
         weight_change_weekly: getWeightChange('weekly'),
         weight_change_monthly: getWeightChange('monthly'),
         weight_log_count: log.length,
+        // Last ~10 weigh-ins that carry context tags, so Wren can correlate a
+        // spike with its cause and explain it as water (e.g. "you ate out and
+        // it's a period week — that bump is salt + hormones, not fat"). Tagless
+        // readings are omitted to keep the payload tight.
+        recent_tagged_weigh_ins: log.slice(-10)
+          .filter((r) => r.tags && (r.tags.period || r.tags.alcohol || r.tags.restaurant))
+          .map((r) => ({
+            date: new Date(r.ts).toLocaleDateString(),
+            weight: r.weight,
+            tags: Object.keys(r.tags).filter((k) => r.tags[k]),
+          })),
       };
     })(),
   };
