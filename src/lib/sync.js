@@ -198,7 +198,18 @@ const pushers = {
     }));
     // Write IDs back to localStorage so future pushes are stable.
     saveKV('sessions', list.map((s, i) => ({ ...s, id: rows[i].id })));
-    const { error } = await supabase.from('bloom_sessions').upsert(rows, { onConflict: 'id' });
+    let { error } = await supabase.from('bloom_sessions').upsert(rows, { onConflict: 'id' });
+    // Self-heal: if the deload column hasn't been added to the DB yet, a full
+    // upsert rejects the WHOLE batch (undefined column) — which previously
+    // meant sessions never synced and the next pullAll() wiped any local-only
+    // ones. Detect that specific failure, strip `deload`, and retry so the
+    // session still persists. deload then rides local-only until the column
+    // lands, at which point this fallback stops firing. NEVER let one optional
+    // column cause session data loss again.
+    if (error && /deload/i.test(`${error.message || ''} ${error.details || ''}`)) {
+      const rowsNoDeload = rows.map(({ deload, ...rest }) => rest);
+      ({ error } = await supabase.from('bloom_sessions').upsert(rowsNoDeload, { onConflict: 'id' }));
+    }
     if (error) throw error;
   },
 
