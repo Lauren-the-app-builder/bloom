@@ -64,7 +64,7 @@ export async function pullAll() {
     // this, a pull that lands before pushers.deletedSessions has succeeded
     // would resurrect rows the user already removed.
     const tombstoned = new Set(loadKV(TOMBSTONE_SESSIONS_KEY, []));
-    saveKV('sessions', sessions.data
+    const serverRows = sessions.data
       .filter((s) => !tombstoned.has(s.id))
       .map((s) => ({
         id: s.id,
@@ -80,7 +80,20 @@ export async function pullAll() {
         // Deload flag — session counts as done but is excluded from
         // "previous performance" recall (see isDeloadSession in storage.js).
         ...(s.deload ? { deload: true } : {}),
-      })));
+      }));
+    // CRITICAL: preserve local sessions the server doesn't have yet. The boot
+    // sequence pulls (and replaces the cache) BEFORE flushQueue() drains
+    // pending pushes — so without this merge, a just-logged session that
+    // hasn't synced (push still queued, was offline, or app closed seconds
+    // after finishing) gets wiped by the pull before it can ever push. We
+    // keep any local row whose id isn't on the server and isn't tombstoned;
+    // the subsequent flushQueue() then pushes it up. Single-user app, so a
+    // local id missing from the server means "not yet pushed", never "deleted
+    // elsewhere" (real deletes go through the tombstone path above).
+    const serverIds = new Set(serverRows.map((s) => s.id));
+    const localPending = loadKV('sessions', [])
+      .filter((s) => s && s.finishedAt && !tombstoned.has(s.id) && (!s.id || !serverIds.has(s.id)));
+    saveKV('sessions', [...serverRows, ...localPending]);
   }
 
   if (customs.data) {
