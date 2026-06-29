@@ -4,7 +4,7 @@
 // before overwriting.
 
 import React, { useState } from 'react';
-import { Settings, Sparkles, Pencil, X, Droplet, Wine, Utensils } from 'lucide-react';
+import { Settings, Sparkles, Pencil, X, Droplet, Wine, Utensils, ChevronLeft, ChevronRight, TrendingUp } from 'lucide-react';
 import { c } from './tokens';
 import {
   getCalorieGoal,
@@ -61,10 +61,6 @@ export default function NourishView({ onOpenSettings }) {
   const current = getCurrentWeight();
   const weeklyAvg = getWeeklyAvgWeight();
   const log = getWeightLog();
-  const weeklySeries = getWeeklyAvgSeries(8); // last 8 weekly averages
-  const dailyChange = getWeightChange('daily');
-  const weeklyChange = getWeightChange('weekly');
-  const monthlyChange = getWeightChange('monthly');
 
   // Local drafts for the two input rows. The calorie-goal input only shows
   // when editingGoal is true (tap the pencil); the weight-log input is
@@ -72,7 +68,10 @@ export default function NourishView({ onOpenSettings }) {
   const [goalDraft, setGoalDraft] = useState('');
   const [editingGoal, setEditingGoal] = useState(false);
   const [weightDraft, setWeightDraft] = useState('');
-  const [changeTab, setChangeTab] = useState('daily');
+  // The trend chart + full weigh-in history live behind this — the main card
+  // stays a quick glance (current + weekly avg + log), and "See historical
+  // data" opens the detail view with the trend chart on top.
+  const [showHistory, setShowHistory] = useState(false);
   // Context tags for today's weigh-in. They don't change the number — they
   // tell Wren why the scale might read high (water, not fat). Reset after a
   // successful log.
@@ -83,13 +82,6 @@ export default function NourishView({ onOpenSettings }) {
   const headerDate = today.toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric',
   });
-
-  // Format change number with sign. null → "—".
-  const fmtChange = (n) => {
-    if (n === null || n === undefined) return '—';
-    const sign = n > 0 ? '+' : '';
-    return `${sign}${n.toFixed(1)}`;
-  };
 
   // "today" if the latest reading is today, otherwise an actual date label.
   const currentDateLabel = (() => {
@@ -152,69 +144,6 @@ export default function NourishView({ onOpenSettings }) {
     setWeighInTags({ period: false, alcohol: false, restaurant: false });
     refresh();
   };
-
-  // Sparkline: last 7 entries (or fewer). The mockup shows 7 dots; if she
-  // has more entries we just take the most recent 7 so the visual stays
-  // legible at small sizes. Returns SVG-ready normalized coordinates.
-  const sparkline = (() => {
-    const points = log.slice(-7);
-    if (points.length < 2) return null;
-    const ws = points.map((p) => p.weight);
-    const min = Math.min(...ws);
-    const max = Math.max(...ws);
-    // Pad the y range so a flat-ish line doesn't pin against the edges.
-    const span = Math.max(0.5, max - min);
-    const VBW = 320; // viewBox width
-    const VBH = 48;  // viewBox height
-    const PAD_Y = 6;
-    const stepX = points.length > 1 ? VBW / (points.length - 1) : 0;
-    return points.map((p, i) => ({
-      x: Math.round(i * stepX),
-      // Invert so heavier = top of svg? No — heavier should be bottom.
-      // Standard sparkline: higher weight = higher y in chart-space, which
-      // means lower y in svg-space. Map weight → svg-y by inverting.
-      y: Math.round(VBH - PAD_Y - ((p.weight - min) / span) * (VBH - PAD_Y * 2)),
-      ts: p.ts,
-    }));
-  })();
-
-  // Weekly-average trend chart — one point per week (Monday-anchored avg),
-  // last 8 weeks. This is the smoothed view that cancels daily water noise, so
-  // a period week or a restaurant spike doesn't read as a real gain. Same SVG
-  // coordinate approach as the sparkline.
-  const weeklyChart = (() => {
-    if (weeklySeries.length < 2) return null;
-    const vals = weeklySeries.map((p) => p.avg);
-    const min = Math.min(...vals);
-    const max = Math.max(...vals);
-    const span = Math.max(0.5, max - min);
-    const VBW = 320;
-    const VBH = 60;
-    const PAD_Y = 8;
-    const stepX = VBW / (weeklySeries.length - 1);
-    return weeklySeries.map((p, i) => ({
-      x: Math.round(i * stepX),
-      y: Math.round(VBH - PAD_Y - ((p.avg - min) / span) * (VBH - PAD_Y * 2)),
-      avg: p.avg,
-      weekStart: p.weekStart,
-    }));
-  })();
-  // Week-over-week delta between the two most recent weekly averages.
-  const weeklyAvgDelta = weeklySeries.length >= 2
-    ? +(weeklySeries[weeklySeries.length - 1].avg - weeklySeries[weeklySeries.length - 2].avg).toFixed(1)
-    : null;
-
-  // Dates that bracket the sparkline.
-  const sparkLeftDate = sparkline
-    ? new Date(log.slice(-7)[0].ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    : '';
-  const sparkRightDate = sparkline
-    ? ((d) => {
-        const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0);
-        const same = (() => { const x = new Date(d); x.setHours(0,0,0,0); return x.getTime() === todayMidnight.getTime(); })();
-        return same ? 'Today' : new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      })(log[log.length - 1].ts)
-    : '';
 
   const cardStyle = {
     background: c.white,
@@ -446,130 +375,28 @@ export default function NourishView({ onOpenSettings }) {
             </p>
           </div>
 
-          {/* Sparkline */}
-          {sparkline && (
-            <>
-              <svg width="100%" height="48" viewBox="0 0 320 48" preserveAspectRatio="none">
-                <polyline
-                  points={sparkline.map((p) => `${p.x},${p.y}`).join(' ')}
-                  fill="none" stroke={c.rosedeep} strokeWidth="2"
-                  strokeLinecap="round" strokeLinejoin="round"
-                />
-                {sparkline.map((p, i) => (
-                  <circle
-                    key={i}
-                    cx={p.x}
-                    cy={p.y}
-                    r={i === sparkline.length - 1 ? 4 : 3.5}
-                    fill={i === sparkline.length - 1 ? c.rosedeep : N.cardBorder}
-                  />
-                ))}
-              </svg>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14, marginTop: 4 }}>
-                <span style={{ fontSize: 11, color: N.hintText }}>{sparkLeftDate}</span>
-                <span style={{ fontSize: 11, color: N.hintText }}>{sparkRightDate}</span>
-              </div>
-            </>
-          )}
-          {!sparkline && (
-            <p style={{
-              fontSize: 12, color: N.hintText, margin: '14px 0',
-              textAlign: 'center',
-            }}>
-              Log a few weigh-ins to see your trend.
-            </p>
-          )}
-
-          {/* Weekly average trend — each point is one week's average weight.
-              Smooths out daily water swings so the real direction is visible. */}
-          <hr style={divider} />
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
-            <p style={{
-              fontSize: 11, color: c.rosedeep, letterSpacing: 0.5,
-              textTransform: 'uppercase', fontWeight: 600, margin: 0,
-            }}>Weekly average trend</p>
-            {weeklyAvgDelta !== null && (
-              <span style={{ fontSize: 12, fontWeight: 600, color: N.mutedText }}>
-                {weeklyAvgDelta > 0 ? '+' : ''}{weeklyAvgDelta.toFixed(1)} lbs vs last week
+          {/* See historical data — opens the detail view with the weight-trend
+              chart on top, change stats, and the full weigh-in history. Keeps
+              this card a clean daily-glance instead of stacking charts. */}
+          <button
+            type="button"
+            onClick={() => setShowHistory(true)}
+            disabled={log.length === 0}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              gap: 8, padding: '12px 14px', borderRadius: 12, cursor: log.length ? 'pointer' : 'default',
+              border: `0.5px solid ${N.cardBorder}`, background: N.tileBg,
+              fontFamily: 'inherit', opacity: log.length ? 1 : 0.55,
+            }}
+          >
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <TrendingUp size={16} color={c.rosedeep} strokeWidth={2} />
+              <span style={{ fontSize: 13, fontWeight: 600, color: N.darkText }}>
+                {log.length ? 'See historical data' : 'Log a weigh-in to start your history'}
               </span>
-            )}
-          </div>
-          {weeklyChart && (
-            <>
-              <svg width="100%" height="60" viewBox="0 0 320 60" preserveAspectRatio="none">
-                <polyline
-                  points={weeklyChart.map((p) => `${p.x},${p.y}`).join(' ')}
-                  fill="none" stroke={c.rosedeep} strokeWidth="2"
-                  strokeLinecap="round" strokeLinejoin="round"
-                />
-                {weeklyChart.map((p, i) => (
-                  <circle
-                    key={i}
-                    cx={p.x}
-                    cy={p.y}
-                    r={i === weeklyChart.length - 1 ? 4 : 3.5}
-                    fill={i === weeklyChart.length - 1 ? c.rosedeep : N.cardBorder}
-                  />
-                ))}
-              </svg>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, marginBottom: 14 }}>
-                <span style={{ fontSize: 11, color: N.hintText }}>
-                  {new Date(weeklyChart[0].weekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                </span>
-                <span style={{ fontSize: 11, color: N.hintText }}>
-                  {weeklySeries[weeklySeries.length - 1].avg.toFixed(1)} lbs this week
-                </span>
-              </div>
-            </>
-          )}
-          {!weeklyChart && (
-            <p style={{
-              fontSize: 12, color: N.hintText, margin: '14px 0',
-              textAlign: 'center',
-            }}>
-              Two weeks of weigh-ins will unlock your weekly trend.
-            </p>
-          )}
-
-          {/* Change tabs */}
-          <hr style={divider} />
-          <p style={{
-            fontSize: 11, color: c.rosedeep, letterSpacing: 0.5,
-            textTransform: 'uppercase', fontWeight: 600, margin: '0 0 8px',
-          }}>Change</p>
-          <div style={{
-            display: 'flex', gap: 6, background: N.tileBg,
-            borderRadius: 12, padding: 4,
-          }}>
-            {[
-              { id: 'daily', label: 'Daily', value: dailyChange },
-              { id: 'weekly', label: 'Weekly', value: weeklyChange },
-              { id: 'monthly', label: 'Monthly', value: monthlyChange },
-            ].map((tab) => {
-              const active = changeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setChangeTab(tab.id)}
-                  style={{
-                    flex: 1, textAlign: 'center', padding: '8px 4px',
-                    borderRadius: 9, cursor: 'pointer', border: 'none',
-                    background: active ? c.rosedeep : 'transparent',
-                    fontFamily: 'inherit',
-                  }}
-                >
-                  <span style={{
-                    fontSize: 10, display: 'block', marginBottom: 3,
-                    color: active ? 'rgba(255,255,255,0.75)' : N.hintText,
-                  }}>{tab.label}</span>
-                  <span style={{
-                    fontSize: 15, fontWeight: 600, display: 'block',
-                    color: active ? '#fff' : N.darkText,
-                  }}>{fmtChange(tab.value)}</span>
-                </button>
-              );
-            })}
-          </div>
+            </span>
+            {log.length > 0 && <ChevronRight size={16} color={N.mutedText} />}
+          </button>
 
           {/* Log input */}
           <hr style={divider} />
@@ -633,6 +460,191 @@ export default function NourishView({ onOpenSettings }) {
           <p style={{ fontSize: 13, color: '#7A4A70', margin: 0, lineHeight: 1.5 }}>
             Wren can see your calorie goal and weight trend to give you more personalised guidance.
           </p>
+        </div>
+      </div>
+
+      {showHistory && <NourishHistory onClose={() => setShowHistory(false)} />}
+    </div>
+  );
+}
+
+// ---------- Weight history detail ----------
+// Full-screen view behind the "See historical data" button. Trend chart on
+// top (weekly averages — the smoothed direction), then change stats, then the
+// full list of every weigh-in with its context tags. Read-only; logging stays
+// on the main Nourish card.
+function NourishHistory({ onClose }) {
+  const log = getWeightLog();
+  const series = getWeeklyAvgSeries(0); // full history, one avg per week
+  const dailyChange = getWeightChange('daily');
+  const weeklyChange = getWeightChange('weekly');
+  const monthlyChange = getWeightChange('monthly');
+  const fmtChange = (n) => (n === null || n === undefined) ? '—' : `${n > 0 ? '+' : ''}${n.toFixed(1)}`;
+
+  // Trend chart geometry from the weekly-average series. Larger than the old
+  // inline sparkline so it reads as the centerpiece of this screen.
+  const chart = (() => {
+    if (series.length < 2) return null;
+    const vals = series.map((p) => p.avg);
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const span = Math.max(0.5, max - min);
+    const VBW = 320, VBH = 120, PAD_Y = 16;
+    const stepX = VBW / (series.length - 1);
+    const pts = series.map((p, i) => ({
+      x: Math.round(i * stepX),
+      y: Math.round(VBH - PAD_Y - ((p.avg - min) / span) * (VBH - PAD_Y * 2)),
+      avg: p.avg,
+      weekStart: p.weekStart,
+    }));
+    return { min, max, pts };
+  })();
+  const delta = series.length >= 2
+    ? +(series[series.length - 1].avg - series[series.length - 2].avg).toFixed(1)
+    : null;
+
+  const card = {
+    background: c.white, border: `0.5px solid ${N.cardBorder}`,
+    borderRadius: 20, padding: '18px 20px', marginBottom: 12,
+  };
+  const label = {
+    fontSize: 11, color: c.rosedeep, letterSpacing: 0.7,
+    textTransform: 'uppercase', fontWeight: 600, margin: '0 0 12px',
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 200, overflowY: 'auto',
+      WebkitOverflowScrolling: 'touch', maxWidth: 430, margin: '0 auto',
+      background: 'linear-gradient(180deg, #F8E8E2 0%, #FBF4FA 30%, #FBF4FA 100%)',
+    }}>
+      {/* Sticky header with back button */}
+      <div style={{
+        position: 'sticky', top: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 6,
+        padding: '16px 20px', background: 'rgba(251,244,250,0.92)',
+        backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+        borderBottom: `0.5px solid ${N.cardBorder}`,
+      }}>
+        <button
+          onClick={onClose}
+          aria-label="Back"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 2, background: 'none',
+            border: 'none', cursor: 'pointer', color: N.darkText,
+            fontSize: 14, fontWeight: 600, fontFamily: 'inherit', padding: 0,
+          }}
+        >
+          <ChevronLeft size={20} /> Nourish
+        </button>
+        <p style={{ fontSize: 15, fontWeight: 600, color: N.darkText, margin: '0 auto 0 8px' }}>
+          Weight history
+        </p>
+      </div>
+
+      <div style={{ padding: '16px 16px 40px' }}>
+        {/* Trend chart — top of the page */}
+        <div style={card}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
+            <p style={{ ...label, margin: 0 }}>Weight trend</p>
+            {delta !== null && (
+              <span style={{ fontSize: 12, fontWeight: 600, color: N.mutedText }}>
+                {delta > 0 ? '+' : ''}{delta.toFixed(1)} lbs vs last week
+              </span>
+            )}
+          </div>
+          {chart ? (
+            <>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {/* y-axis range labels */}
+                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', fontSize: 10, color: N.hintText, paddingBottom: 2 }}>
+                  <span>{chart.max.toFixed(1)}</span>
+                  <span>{chart.min.toFixed(1)}</span>
+                </div>
+                <svg width="100%" height="120" viewBox="0 0 320 120" preserveAspectRatio="none" style={{ flex: 1 }}>
+                  <polyline
+                    points={chart.pts.map((p) => `${p.x},${p.y}`).join(' ')}
+                    fill="none" stroke={c.rosedeep} strokeWidth="2"
+                    strokeLinecap="round" strokeLinejoin="round"
+                  />
+                  {chart.pts.map((p, i) => (
+                    <circle
+                      key={i} cx={p.x} cy={p.y}
+                      r={i === chart.pts.length - 1 ? 4 : 3}
+                      fill={i === chart.pts.length - 1 ? c.rosedeep : N.cardBorder}
+                    />
+                  ))}
+                </svg>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                <span style={{ fontSize: 11, color: N.hintText }}>
+                  {new Date(chart.pts[0].weekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </span>
+                <span style={{ fontSize: 11, color: N.hintText }}>
+                  {chart.pts[chart.pts.length - 1].avg.toFixed(1)} lbs · latest week
+                </span>
+              </div>
+              <p style={{ fontSize: 11, color: N.hintText, margin: '10px 0 0', lineHeight: 1.4 }}>
+                Each point is one week's average — smooths out daily water swings so the real direction shows.
+              </p>
+            </>
+          ) : (
+            <p style={{ fontSize: 12, color: N.hintText, margin: '8px 0', textAlign: 'center' }}>
+              Two weeks of weigh-ins will unlock your trend.
+            </p>
+          )}
+        </div>
+
+        {/* Change stats */}
+        <div style={card}>
+          <p style={label}>Change</p>
+          <div style={{ display: 'flex', gap: 6, background: N.tileBg, borderRadius: 12, padding: 4 }}>
+            {[
+              { label: 'Daily', value: dailyChange },
+              { label: 'Weekly', value: weeklyChange },
+              { label: 'Monthly', value: monthlyChange },
+            ].map((t) => (
+              <div key={t.label} style={{ flex: 1, textAlign: 'center', padding: '8px 4px' }}>
+                <span style={{ fontSize: 10, display: 'block', marginBottom: 3, color: N.hintText }}>{t.label}</span>
+                <span style={{ fontSize: 15, fontWeight: 600, display: 'block', color: N.darkText }}>{fmtChange(t.value)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Full weigh-in history */}
+        <div style={card}>
+          <p style={label}>All weigh-ins</p>
+          {log.length === 0 && (
+            <p style={{ fontSize: 12, color: N.hintText, margin: 0, textAlign: 'center' }}>No weigh-ins yet.</p>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {log.slice().reverse().map((r, i) => (
+              <div
+                key={r.ts}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '11px 0',
+                  borderTop: i === 0 ? 'none' : `0.5px solid ${N.headerBg}`,
+                }}
+              >
+                <span style={{ fontSize: 13, color: N.darkText }}>
+                  {new Date(r.ts).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  {r.tags && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                      {r.tags.period && <Droplet size={12} color={c.rosedeep} strokeWidth={2} />}
+                      {r.tags.alcohol && <Wine size={12} color={c.rosedeep} strokeWidth={2} />}
+                      {r.tags.restaurant && <Utensils size={12} color={c.rosedeep} strokeWidth={2} />}
+                    </span>
+                  )}
+                  <span style={{ fontSize: 14, fontWeight: 600, color: N.darkText, minWidth: 56, textAlign: 'right' }}>
+                    {r.weight.toFixed(1)} <span style={{ fontSize: 11, fontWeight: 400, color: N.mutedText }}>lbs</span>
+                  </span>
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
