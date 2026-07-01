@@ -77,6 +77,9 @@ export default function NourishView({ onOpenSettings }) {
   // successful log.
   const [weighInTags, setWeighInTags] = useState({ period: false, alcohol: false, restaurant: false });
   const toggleTag = (key) => setWeighInTags((t) => ({ ...t, [key]: !t[key] }));
+  // Optional free-text note for today's weigh-in ("slept badly", "big carb
+  // day"). Reset after a successful log.
+  const [weighInNote, setWeighInNote] = useState('');
 
   const today = new Date();
   const headerDate = today.toLocaleDateString('en-US', {
@@ -136,12 +139,13 @@ export default function NourishView({ onOpenSettings }) {
         "You already logged a weight today. Replace it with this new reading?"
       );
       if (!ok) return;
-      replaceWeightForDate(n, Date.now(), weighInTags);
+      replaceWeightForDate(n, Date.now(), weighInTags, weighInNote);
     } else {
-      addWeight(n, Date.now(), weighInTags);
+      addWeight(n, Date.now(), weighInTags, weighInNote);
     }
     setWeightDraft('');
     setWeighInTags({ period: false, alcohol: false, restaurant: false });
+    setWeighInNote('');
     refresh();
   };
 
@@ -431,6 +435,16 @@ export default function NourishView({ onOpenSettings }) {
               );
             })}
           </div>
+          {/* Optional note for this weigh-in — free text Wren can read for
+              extra context ("slept badly", "big carb day", "felt bloated"). */}
+          <input
+            type="text"
+            placeholder="Add a note (optional)…"
+            value={weighInNote}
+            onChange={(e) => setWeighInNote(e.target.value.slice(0, 280))}
+            onKeyDown={(e) => { if (e.key === 'Enter') logToday(); }}
+            style={{ ...inputStyle, width: '100%', flex: 'none', marginBottom: 10 }}
+          />
           <div style={{ display: 'flex', gap: 8 }}>
             <input
               type="text"
@@ -622,26 +636,32 @@ function NourishHistory({ onClose }) {
               <div
                 key={r.ts}
                 style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   padding: '11px 0',
                   borderTop: i === 0 ? 'none' : `0.5px solid ${N.headerBg}`,
                 }}
               >
-                <span style={{ fontSize: 13, color: N.darkText }}>
-                  {new Date(r.ts).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                </span>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                  {r.tags && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                      {r.tags.period && <Droplet size={12} color={c.rosedeep} strokeWidth={2} />}
-                      {r.tags.alcohol && <Wine size={12} color={c.rosedeep} strokeWidth={2} />}
-                      {r.tags.restaurant && <Utensils size={12} color={c.rosedeep} strokeWidth={2} />}
-                    </span>
-                  )}
-                  <span style={{ fontSize: 14, fontWeight: 600, color: N.darkText, minWidth: 56, textAlign: 'right' }}>
-                    {r.weight.toFixed(1)} <span style={{ fontSize: 11, fontWeight: 400, color: N.mutedText }}>lbs</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 13, color: N.darkText }}>
+                    {new Date(r.ts).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                   </span>
-                </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    {r.tags && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                        {r.tags.period && <Droplet size={12} color={c.rosedeep} strokeWidth={2} />}
+                        {r.tags.alcohol && <Wine size={12} color={c.rosedeep} strokeWidth={2} />}
+                        {r.tags.restaurant && <Utensils size={12} color={c.rosedeep} strokeWidth={2} />}
+                      </span>
+                    )}
+                    <span style={{ fontSize: 14, fontWeight: 600, color: N.darkText, minWidth: 56, textAlign: 'right' }}>
+                      {r.weight.toFixed(1)} <span style={{ fontSize: 11, fontWeight: 400, color: N.mutedText }}>lbs</span>
+                    </span>
+                  </span>
+                </div>
+                {r.note && (
+                  <p style={{ fontSize: 12, color: N.mutedText, margin: '4px 0 0', lineHeight: 1.4 }}>
+                    {r.note}
+                  </p>
+                )}
               </div>
             ))}
           </div>

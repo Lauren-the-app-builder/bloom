@@ -346,6 +346,14 @@ function normalizeWeighInTags(src) {
 function hasAnyTag(tags) {
   return WEIGH_IN_TAG_KEYS.some((k) => tags[k]);
 }
+// Free-text note Lauren can attach to a weigh-in ("slept badly", "big carb
+// day", "felt bloated"). Stored only when non-empty; trimmed and capped so a
+// runaway paste can't bloat the synced blob.
+const WEIGH_IN_NOTE_MAX = 280;
+function normalizeWeighInNote(src) {
+  const s = String(src ?? '').trim();
+  return s ? s.slice(0, WEIGH_IN_NOTE_MAX) : '';
+}
 export function getWeightLog() {
   const v = load('nourishWeightLog', []);
   if (!Array.isArray(v)) return [];
@@ -353,39 +361,42 @@ export function getWeightLog() {
     .map((r) => ({
       ts: Number(r?.ts) || 0,
       weight: Number(r?.weight) || 0,
-      // Older entries predate tags — normalize so every row has the full
+      // Older entries predate tags/note — normalize so every row has the full
       // shape and the UI/Wren never have to null-check.
       tags: normalizeWeighInTags(r?.tags),
+      note: normalizeWeighInNote(r?.note),
     }))
     .filter((r) => r.ts > 0 && r.weight > 0)
     .sort((a, b) => a.ts - b.ts);
 }
-// Build the persisted entry, attaching `tags` only when at least one is set.
-function makeWeighIn(weight, ts, tags) {
+// Build the persisted entry, attaching `tags`/`note` only when present.
+function makeWeighIn(weight, ts, tags, note) {
   const norm = normalizeWeighInTags(tags);
   const entry = { ts: Number(ts) || Date.now(), weight };
   if (hasAnyTag(norm)) entry.tags = norm;
+  const n = normalizeWeighInNote(note);
+  if (n) entry.note = n;
   return entry;
 }
 // Append a new reading. Does NOT dedupe — call replaceWeightForDate first
 // if you want the same-day overwrite behavior the UI uses.
-export function addWeight(weight, ts = Date.now(), tags = null) {
+export function addWeight(weight, ts = Date.now(), tags = null, note = '') {
   const w = Number(weight);
   if (!Number.isFinite(w) || w <= 0) return getWeightLog();
   const list = getWeightLog();
-  list.push(makeWeighIn(w, ts, tags));
+  list.push(makeWeighIn(w, ts, tags, note));
   list.sort((a, b) => a.ts - b.ts);
   save('nourishWeightLog', list);
   return list;
 }
 // Replace any existing entries for the same local calendar day as `ts` with
 // a single new reading. Returns the new log.
-export function replaceWeightForDate(weight, ts = Date.now(), tags = null) {
+export function replaceWeightForDate(weight, ts = Date.now(), tags = null, note = '') {
   const w = Number(weight);
   if (!Number.isFinite(w) || w <= 0) return getWeightLog();
   const targetKey = localDateKey(ts);
   const filtered = getWeightLog().filter((r) => localDateKey(r.ts) !== targetKey);
-  filtered.push(makeWeighIn(w, ts, tags));
+  filtered.push(makeWeighIn(w, ts, tags, note));
   filtered.sort((a, b) => a.ts - b.ts);
   save('nourishWeightLog', filtered);
   return filtered;

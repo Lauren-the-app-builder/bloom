@@ -300,6 +300,9 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
           // cues, not fat): on her period, drank alcohol the day before, ate
           // at a restaurant. Only the true ones are surfaced.
           tags: cur.tags ? Object.keys(cur.tags).filter((k) => cur.tags[k]) : [],
+          // Free-text note Lauren left on this weigh-in — extra context in her
+          // own words (sleep, bloating, a big meal). Read it alongside tags.
+          note: cur.note || null,
         } : null,
         weight_weekly_avg: getWeeklyAvgWeight(),
         // Smoothed week-over-week trend (last 8 weekly averages, oldest→newest).
@@ -313,16 +316,18 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
         weight_change_weekly: getWeightChange('weekly'),
         weight_change_monthly: getWeightChange('monthly'),
         weight_log_count: log.length,
-        // Last ~10 weigh-ins that carry context tags, so Wren can correlate a
-        // spike with its cause and explain it as water (e.g. "you ate out and
-        // it's a period week — that bump is salt + hormones, not fat"). Tagless
-        // readings are omitted to keep the payload tight.
+        // Last ~10 weigh-ins that carry context (a tag OR a free-text note), so
+        // Wren can correlate a spike with its cause and explain it as water
+        // (e.g. "you ate out and it's a period week — that bump is salt +
+        // hormones, not fat"). Context-free readings are omitted to keep the
+        // payload tight.
         recent_tagged_weigh_ins: log.slice(-10)
-          .filter((r) => r.tags && (r.tags.period || r.tags.alcohol || r.tags.restaurant))
+          .filter((r) => (r.tags && (r.tags.period || r.tags.alcohol || r.tags.restaurant)) || r.note)
           .map((r) => ({
             date: new Date(r.ts).toLocaleDateString(),
             weight: r.weight,
-            tags: Object.keys(r.tags).filter((k) => r.tags[k]),
+            tags: r.tags ? Object.keys(r.tags).filter((k) => r.tags[k]) : [],
+            note: r.note || null,
           })),
       };
     })(),
