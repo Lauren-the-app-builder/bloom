@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, CalendarRange, Zap } from 'lucide-react';
 import { c } from './tokens';
-import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage, getCardioSessionsForWeek, addCardioSession, removeCardioSession } from '../../lib/storage';
+import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage, getCardioSessionsForWeek, addCardioSession, removeCardioSession, getSkippedSessionsForWeek, removeSkippedSession } from '../../lib/storage';
 import { computeActiveNudge, markTriggerSeen } from './wrenTriggers';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 
@@ -210,6 +210,16 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
       if (m) set.add(m[1].toUpperCase());
     }
     return set;
+  })();
+  // Sessions Lauren intentionally skipped this week (label -> reason), so the
+  // row can show a "Skipped" marker instead of reading as un-done/pending.
+  const skippedLabels = (() => {
+    const map = new Map();
+    if (!hasStarted || currentWeek <= 0) return map;
+    for (const s of getSkippedSessionsForWeek(currentWeek)) {
+      map.set(String(s.label).toUpperCase(), s.reason || '');
+    }
+    return map;
   })();
 
   return (
@@ -510,8 +520,13 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {allSessions.map(s => {
                     const sc = SESSION_COLORS[s.session_label] || SESSION_COLORS.A;
-                    const done = doneLabels.has(String(s.session_label).toUpperCase());
-                    const hasHiit = hiitLabels.has(String(s.session_label).toUpperCase());
+                    const labelUp = String(s.session_label).toUpperCase();
+                    const done = doneLabels.has(labelUp);
+                    const hasHiit = hiitLabels.has(labelUp);
+                    // Skipped only matters when the session isn't actually done —
+                    // if she ended up training it, the done state wins.
+                    const skipped = !done && skippedLabels.has(labelUp);
+                    const skipReason = skipped ? skippedLabels.get(labelUp) : '';
                     const isToday = s.scheduled_day && s.scheduled_day.toLowerCase() === dayName.toLowerCase();
                     return (
                       <button
@@ -531,7 +546,7 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                           width: 26, height: 26, borderRadius: 8, background: sc.gradient,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           color: 'white', fontSize: 12, fontWeight: 800, flexShrink: 0,
-                          opacity: done ? 0.5 : 1,
+                          opacity: done || skipped ? 0.5 : 1,
                         }}>
                           {s.session_label}
                         </div>
@@ -544,7 +559,9 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                             {hasHiit && <Zap size={11} fill="#E25A75" color="#E25A75" />}
                           </div>
                           <div style={{ fontSize: 11, color: c.muted }}>
-                            {s.scheduled_day || 'unscheduled'}{hasHiit ? ' · + HIIT' : ''}
+                            {skipped
+                              ? `Skipped${skipReason ? ` · ${skipReason}` : ''}`
+                              : `${s.scheduled_day || 'unscheduled'}${hasHiit ? ' · + HIIT' : ''}`}
                           </div>
                         </div>
                         {done ? (
@@ -587,6 +604,25 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                             }}
                           >
                             <Check size={12} color={c.muted} strokeWidth={2.5} />
+                          </button>
+                        ) : skipped ? (
+                          /* Skipped chip — tap to un-skip if Lauren changes
+                             her mind and wants to train it after all. */
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!window.confirm(`Un-skip Session ${s.session_label}? It'll show as scheduled again.`)) return;
+                              removeSkippedSession(currentWeek, s.session_label);
+                              setScheduleBump(b => b + 1);
+                            }}
+                            title="Skipped — tap to un-skip"
+                            style={{
+                              fontSize: 10, fontWeight: 700, color: c.muted,
+                              background: c.line, padding: '2px 8px', borderRadius: 999,
+                              border: 'none', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
+                            }}
+                          >
+                            Skipped
                           </button>
                         ) : isToday ? (
                           <span style={{ fontSize: 10, fontWeight: 700, color: c.rosedeep, background: c.blushLight, padding: '2px 8px', borderRadius: 999 }}>Today</span>

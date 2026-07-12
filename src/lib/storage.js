@@ -280,6 +280,55 @@ export function removeInjuryWeek(weekNum) {
   return next;
 }
 
+// ---------- Skipped sessions ----------
+// A specific lifting session (A/B/C) Lauren has intentionally skipped for a
+// given program week — e.g. she's injured and dropping Session C this week.
+// Keyed by program WEEK NUMBER + session label (not calendar date) so it lines
+// up with how deload/injury weeks and the Program view identify sessions. A
+// skip is a marker: the session shows "Skipped" instead of looking un-done,
+// and the weekly-miss logic treats it as resolved (not a miss), so no nag and
+// no punishment. Distinct from a logged session — nothing was trained.
+//
+// Shape: { week:number, label:'A'|'B'|'C', reason:string, createdAt:number }
+export function getSkippedSessions() {
+  const v = load('skippedSessions', []);
+  return Array.isArray(v)
+    ? v.filter(s => s && Number.isFinite(Number(s.week)) && s.label)
+    : [];
+}
+
+export function getSkippedSessionsForWeek(weekNum) {
+  const n = Number(weekNum);
+  return getSkippedSessions().filter(s => Number(s.week) === n);
+}
+
+export function isSessionSkipped(weekNum, label) {
+  const n = Number(weekNum);
+  const L = String(label || '').toUpperCase();
+  if (!Number.isFinite(n) || n <= 0 || !L) return false;
+  return getSkippedSessions().some(s => Number(s.week) === n && String(s.label).toUpperCase() === L);
+}
+
+export function addSkippedSession(weekNum, label, reason = '') {
+  const n = Number(weekNum);
+  const L = String(label || '').toUpperCase();
+  if (!Number.isFinite(n) || n <= 0 || !L) return getSkippedSessions();
+  if (isSessionSkipped(n, L)) return getSkippedSessions(); // idempotent
+  const next = [...getSkippedSessions(), {
+    week: n, label: L, reason: String(reason || '').trim(), createdAt: Date.now(),
+  }];
+  save('skippedSessions', next);
+  return next;
+}
+
+export function removeSkippedSession(weekNum, label) {
+  const n = Number(weekNum);
+  const L = String(label || '').toUpperCase();
+  const next = getSkippedSessions().filter(s => !(Number(s.week) === n && String(s.label).toUpperCase() === L));
+  save('skippedSessions', next);
+  return next;
+}
+
 // ---------- Wren long-term memory ----------
 // Append-only list of facts Wren has learned about Lauren and explicitly
 // chosen to remember (preferences, recurring issues, off-limit lifts she

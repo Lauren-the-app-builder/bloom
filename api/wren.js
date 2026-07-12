@@ -43,6 +43,7 @@ export default async function handler(req, res) {
     weeklyMiss = null,
     deloadWeeks = [],
     injuryWeeks = [],
+    skippedThisWeek = [],
     recentSessionFeedback = [],
     recentExerciseAdjustments = [],
     recentHiitFinishers = [],
@@ -81,6 +82,7 @@ Injury prevention & physical therapy (core responsibility — this OVERRIDES eve
 - Be proactive, not just reactive. If long-term memory notes a recurring issue (e.g. "left shoulder pops on incline"), program around it up front — lead with pain-free variations, cue the setup, and check in. Prevention beats rehab.
 - Missing a set, an exercise, or a whole session because something hurt is the CORRECT call. It earns praise for listening to her body — zero pushback, zero punishment (see Missed session rules).
 - Injury-week marker: when Lauren tells you she's injured and training reduced (or not at all) for a week — or asks you to flag a week as injured — call bloom_actions with mark_injured and the week_number (1-12). This puts an "Injured" sign on that week in the Program tab and tells the app not to count that week's unlogged sessions as misses. Use unmark_injured to clear it if she says it was a mistake or she's recovered and wants the flag off. The weeks already flagged are listed as "Injured weeks" in the context block. This is just a marker/sign — it does NOT rewrite that week's exercises. Never treat an injured week as a short/missed week: don't ask why sessions were missed and never assign a punishment for it.
+- Skipping a specific session: when Lauren says she's not doing a particular session this week (e.g. "I'm skipping Session C" or "I can't do C, my knee's still bad"), call bloom_actions with skip_session and the session_label ("A", "B", or "C"). It defaults to the current week; pass week_number for a different one, and pass reason (e.g. "injury") when she gives one. This marks that session "Skipped" in the app so it reads as an intentional choice, not a missed/pending session, and stops it from counting as a miss. Use unskip_session with the session_label if she changes her mind and wants to do it after all. If she's skipping because of pain/injury, acknowledge it as a smart call (PT mode) — never pushback, never punishment. Skipping a session is separate from marking the whole week injured; do whichever she asks for (or both if the whole week is compromised).
 
 Weekly schedule management:
 - At the start of each week, ask Lauren what her schedule looks like before assigning the 3 lifting sessions to specific days.
@@ -243,6 +245,7 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
     `Is deload week: ${isDeload ? 'yes' : 'no'}`,
     `Confirmed deload weeks: ${deloadWeeks.length ? deloadWeeks.join(', ') : 'none yet'}`,
     `Injured weeks (reduced/skipped training around an injury — never counts as a miss): ${injuryWeeks.length ? injuryWeeks.join(', ') : 'none'}`,
+    `Sessions skipped this week (intentional — NOT misses): ${skippedThisWeek.length ? skippedThisWeek.map(s => `${s.label}${s.reason ? ` (${s.reason})` : ''}`).join(', ') : 'none'}`,
     `Lauren's current lift bests: ${liftBestLines || 'no data yet'}`,
     `Sessions this week: ${thisWeekSessions.length > 0 ? JSON.stringify(thisWeekSessions) : 'none yet'}`,
     `Weekly miss snapshot: ${weeklyMiss ? `week ${weeklyMiss.weekNumber} — ${weeklyMiss.loggedCount}/${weeklyMiss.scheduledCount} logged, ${weeklyMiss.missedCount} short${weeklyMiss.isCheckDay ? ' (Sunday: week is closing)' : ''}` : 'n/a'}`,
@@ -305,7 +308,7 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
             items: {
               type: 'object',
               properties: {
-                type: { type: 'string', description: 'Action type. Program/chat scope: generate_program, assign_punishment, flag_plateau, set_schedule, edit_workout, apply_deload, remove_deload, mark_injured (flag a program week as an injury week — pair with week_number), unmark_injured (clear that flag — pair with week_number), add_cardio_session (week-scoped, Lauren-triggered cardio — pair with `name` and `day`), remember (save a long-term fact about Lauren), forget_note (drop one). Live-workout scope (only valid when the user message says it is mid-workout): set_target_weight, set_target (rep target), set_rest, add_set, add_exercise, remove_exercise, reorder.' },
+                type: { type: 'string', description: 'Action type. Program/chat scope: generate_program, assign_punishment, flag_plateau, set_schedule, edit_workout, apply_deload, remove_deload, mark_injured (flag a program week as an injury week — pair with week_number), unmark_injured (clear that flag — pair with week_number), skip_session (mark one lifting session A/B/C as intentionally skipped this week — pair with session_label, optional week_number, optional reason), unskip_session (clear a skip — pair with session_label, optional week_number), add_cardio_session (week-scoped, Lauren-triggered cardio — pair with `name` and `day`), remember (save a long-term fact about Lauren), forget_note (drop one). Live-workout scope (only valid when the user message says it is mid-workout): set_target_weight, set_target (rep target), set_rest, add_set, add_exercise, remove_exercise, reorder.' },
                 program: { type: 'object', description: 'For generate_program: the full program object with weeks array' },
                 description: { type: 'string', description: 'For assign_punishment: the punishment description' },
                 exercise: { type: 'string', description: 'For flag_plateau: the exercise name. For edit_workout: the exercise whose reps and/or sets you are changing (pair with reps and/or sets).' },
@@ -317,7 +320,8 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
                 remove_exercise: { type: 'string', description: 'For edit_workout: name of an exercise to remove from the session.' },
                 reps: { type: 'string', description: 'For edit_workout: a rep range like "8-10" — used with add_exercise (target for the new exercise) or with exercise (new target for an existing exercise). For live-workout set_target: the new top rep target (as a number string).' },
                 weight: { type: 'number', description: 'For live-workout set_target_weight or add_exercise: the working weight in the user\'s unit.' },
-                week_number: { type: 'number', description: 'For apply_deload/remove_deload or mark_injured/unmark_injured: which program week (1-12) to mark or un-mark.' },
+                week_number: { type: 'number', description: 'For apply_deload/remove_deload, mark_injured/unmark_injured, or skip_session/unskip_session: which program week (1-12) to act on. For skip_session/unskip_session it is optional and defaults to the current week.' },
+                reason: { type: 'string', description: 'For skip_session (optional): a short reason the session was skipped, e.g. "injury", "sick", "travel". Shown on the "Skipped" marker.' },
                 fact: { type: 'string', description: 'For remember: a concise first-person statement to store about Lauren long-term (e.g. "Left shoulder pops on incline press but is fine.", "Hates cable rows.", "Prefers Tuesday over Monday for Session A."). Keep it short, factual, and useful for future sessions.' },
                 seconds: { type: 'number', description: 'For live-workout set_rest: rest time in seconds for this exercise.' },
                 sets: { type: 'number', description: 'For edit_workout: new set count for an exercise. Pair with exercise to change an existing one, with add_exercise to set the new exercise\'s sets, or send on its own with exercise to leave reps alone. Applies across all 12 weeks. For live-workout add_exercise: number of sets to add (default 3).' },

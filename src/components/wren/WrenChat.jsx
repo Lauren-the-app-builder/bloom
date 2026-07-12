@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Sparkles, ChevronRight } from 'lucide-react';
 import { c } from './tokens';
-import { getWrenMessages, addWrenMessage, resetWrenChat, getActiveProgram, saveProgram, setProgramSchedule, editProgramSession, getSessions, getMissedSessions, addMissedSession, addDeloadWeek, removeDeloadWeek, addInjuryWeek, removeInjuryWeek, addWrenNote, getWrenNotes, removeWrenNote, addCardioSession } from '../../lib/storage';
+import { getWrenMessages, addWrenMessage, resetWrenChat, getActiveProgram, saveProgram, setProgramSchedule, editProgramSession, getSessions, getMissedSessions, addMissedSession, addDeloadWeek, removeDeloadWeek, addInjuryWeek, removeInjuryWeek, addSkippedSession, removeSkippedSession, addWrenNote, getWrenNotes, removeWrenNote, addCardioSession } from '../../lib/storage';
 
 // If the gap since Lauren's last interaction with Wren exceeds this, the
 // chat starts fresh on next open — Wren has no memory of the old thread,
 // and the visible chat is empty (the old thread is archived, not deleted).
 const WREN_SESSION_GAP_MS = 6 * 60 * 60 * 1000; // 6 hours
-import { buildWrenContext } from './wrenHelpers';
+import { buildWrenContext, getCurrentWeekAndMesocycle } from './wrenHelpers';
 import { askWren } from '../../lib/wren';
 
 function renderContent(text) {
@@ -184,6 +184,20 @@ DO NOT generate the program yet. Just introduce yourself and ask if she has anyt
           }
           if (action.type === 'unmark_injured' && Number.isFinite(Number(action.week_number))) {
             removeInjuryWeek(Number(action.week_number));
+          }
+          if ((action.type === 'skip_session' || action.type === 'unskip_session') && action.session_label) {
+            // week_number is optional — default to the current program week,
+            // which is what "this week" means when Lauren skips a session.
+            const wk = Number.isFinite(Number(action.week_number))
+              ? Number(action.week_number)
+              : (getCurrentWeekAndMesocycle(program).week || 0);
+            if (wk > 0) {
+              if (action.type === 'skip_session') {
+                addSkippedSession(wk, action.session_label, action.reason || '');
+              } else {
+                removeSkippedSession(wk, action.session_label);
+              }
+            }
           }
           if (action.type === 'remember' && action.fact) {
             addWrenNote({ text: action.fact, source: 'wren' });

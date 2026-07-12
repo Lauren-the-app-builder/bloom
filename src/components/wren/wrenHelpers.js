@@ -1,6 +1,6 @@
 // Pure utility functions for the Wren coaching system.
 
-import { load, isDeloadWeek, getDeloadWeeks, isInjuryWeek, getInjuryWeeks, getWrenNotes, getCalorieGoal, getCurrentWeight, getWeeklyAvgWeight, getWeeklyAvgSeries, getWeightChange, getWeightLog, getNourishPhase, getCardioSessionsForWeek } from '../../lib/storage';
+import { load, isDeloadWeek, getDeloadWeeks, isInjuryWeek, getInjuryWeeks, getSkippedSessionsForWeek, getWrenNotes, getCalorieGoal, getCurrentWeight, getWeeklyAvgWeight, getWeeklyAvgSeries, getWeightChange, getWeightLog, getNourishPhase, getCardioSessionsForWeek } from '../../lib/storage';
 import { comboKey, comboLabel } from './tokens';
 
 // ---------- Plateau detection ----------
@@ -71,8 +71,11 @@ export function computeWeeklyMissesForProgram(program, sessions, { now = new Dat
   // punishment system all stay quiet. Matches Wren's rule that injury never
   // counts toward a punishment.
   const injured = isInjuryWeek(currentWeek);
-  const missedCount = injured ? 0 : Math.max(0, scheduledCount - loggedCount);
-  return { isCheckDay, scheduledCount, loggedCount, missedCount, injured, weekNumber: currentWeek };
+  // Sessions Lauren explicitly skipped this week are intentional, not misses —
+  // subtract them from the shortfall so an acknowledged skip doesn't nag.
+  const skippedCount = getSkippedSessionsForWeek(currentWeek).length;
+  const missedCount = injured ? 0 : Math.max(0, scheduledCount - loggedCount - skippedCount);
+  return { isCheckDay, scheduledCount, loggedCount, skippedCount, missedCount, injured, weekNumber: currentWeek };
 }
 
 // ---------- Missed session detection (legacy day-based) ----------
@@ -162,6 +165,8 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
   const deloadWeeks = getDeloadWeeks();
   // Weeks Lauren flagged as injured — she trained reduced/not at all.
   const injuryWeeks = getInjuryWeeks();
+  // Sessions Lauren has intentionally skipped this program week (A/B/C).
+  const skippedThisWeek = getSkippedSessionsForWeek(week);
   // Long-term memory — facts Wren has saved with the remember action.
   const wrenNotes = getWrenNotes();
 
@@ -231,6 +236,7 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
     weeklyMiss,
     deloadWeeks,
     injuryWeeks,
+    skippedThisWeek,
     wrenNotes,
     thisWeekSessions: thisWeekSessions.map(s => s.workoutName),
     lastSessionData: lastSession ? {

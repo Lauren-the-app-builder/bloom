@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronRight, Sparkles } from 'lucide-react';
 import { c, comboLabel } from './tokens';
-import { getActiveProgram, setsForExercise, getSessions, load, isDeloadWeek, isInjuryWeek } from '../../lib/storage';
+import { getActiveProgram, setsForExercise, getSessions, load, isDeloadWeek, isInjuryWeek, isSessionSkipped } from '../../lib/storage';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 
 const MESO_LABELS = [
@@ -321,12 +321,16 @@ export default function ProgramView() {
                           {(Array.isArray(wk.sessions) ? wk.sessions : Object.entries(wk.sessions).map(([k, v]) => ({ label: k, ...v }))).map((sess, si) => {
                             const label = sess.label || sess.name || String.fromCharCode(65 + si); // A, B, C
                             const logged = loggedFor(wNum, label);
+                            const skipped = !logged && isSessionSkipped(wNum, label);
                             return (
                               <div key={si} style={{ marginBottom: si < (wk.sessions.length || Object.keys(wk.sessions).length) - 1 ? 10 : 0 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                                   <span style={{ fontSize: 12, fontWeight: 700, color: c.charcoal }}>Session {label}</span>
                                   {logged && (
                                     <span style={{ fontSize: 9, fontWeight: 700, color: '#2e7d4a', background: '#e6f5ea', padding: '1px 7px', borderRadius: 999 }}>✓ Done</span>
+                                  )}
+                                  {skipped && (
+                                    <span style={{ fontSize: 9, fontWeight: 700, color: '#B0511F', background: '#fce4d6', padding: '1px 7px', borderRadius: 999 }}>Skipped</span>
                                   )}
                                 </div>
                                 {(sess.exercises || []).map((ex, ei) => {
