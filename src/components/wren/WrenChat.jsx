@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Sparkles, ChevronRight } from 'lucide-react';
 import { c } from './tokens';
-import { getWrenMessages, addWrenMessage, resetWrenChat, getActiveProgram, saveProgram, setProgramSchedule, editProgramSession, getSessions, getMissedSessions, addMissedSession, addDeloadWeek, removeDeloadWeek, addWrenNote, getWrenNotes, removeWrenNote, addCardioSession } from '../../lib/storage';
+import { getWrenMessages, addWrenMessage, resetWrenChat, getActiveProgram, saveProgram, setProgramSchedule, editProgramSession, getSessions, getMissedSessions, addMissedSession, addDeloadWeek, removeDeloadWeek, addInjuryWeek, removeInjuryWeek, addWrenNote, getWrenNotes, removeWrenNote, addCardioSession } from '../../lib/storage';
 
 // If the gap since Lauren's last interaction with Wren exceeds this, the
 // chat starts fresh on next open — Wren has no memory of the old thread,
@@ -175,6 +175,15 @@ DO NOT generate the program yet. Just introduce yourself and ask if she has anyt
           }
           if (action.type === 'remove_deload' && Number.isFinite(Number(action.week_number))) {
             removeDeloadWeek(Number(action.week_number));
+          }
+          if (action.type === 'mark_injured' && Number.isFinite(Number(action.week_number))) {
+            // Flag a program week as an injury week — surfaces the "Injured"
+            // sign in the Program view and stops the missed-session logic from
+            // nagging Lauren for that week's unlogged sessions.
+            addInjuryWeek(Number(action.week_number));
+          }
+          if (action.type === 'unmark_injured' && Number.isFinite(Number(action.week_number))) {
+            removeInjuryWeek(Number(action.week_number));
           }
           if (action.type === 'remember' && action.fact) {
             addWrenNote({ text: action.fact, source: 'wren' });

@@ -246,6 +246,40 @@ export function removeDeloadWeek(weekNum) {
   return next;
 }
 
+// ---------- Injury weeks ----------
+// A week Lauren flagged as injured — she was hurt and trained reduced (or not
+// at all). Purely a marker: it surfaces an "Injured" sign on the week in the
+// Program view and tells the missed-session logic not to nag her for the
+// sessions she couldn't do. It does NOT rewrite the week's sessions (that's the
+// separate, larger Injury-Week override feature) and does NOT change set/rep
+// math. Mirrors the deload-week store so it rides the same KV sync path.
+export function getInjuryWeeks() {
+  const v = load('injuryWeeks', []);
+  return Array.isArray(v) ? v.map(n => Number(n)).filter(Number.isFinite) : [];
+}
+
+export function isInjuryWeek(weekNum) {
+  if (!Number.isFinite(weekNum) || weekNum <= 0) return false;
+  return getInjuryWeeks().includes(Number(weekNum));
+}
+
+export function addInjuryWeek(weekNum) {
+  const n = Number(weekNum);
+  if (!Number.isFinite(n) || n <= 0) return getInjuryWeeks();
+  const set = new Set(getInjuryWeeks());
+  set.add(n);
+  const next = [...set].sort((a, b) => a - b);
+  save('injuryWeeks', next);
+  return next;
+}
+
+export function removeInjuryWeek(weekNum) {
+  const n = Number(weekNum);
+  const next = getInjuryWeeks().filter(x => x !== n);
+  save('injuryWeeks', next);
+  return next;
+}
+
 // ---------- Wren long-term memory ----------
 // Append-only list of facts Wren has learned about Lauren and explicitly
 // chosen to remember (preferences, recurring issues, off-limit lifts she

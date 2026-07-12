@@ -1,6 +1,6 @@
 // Pure utility functions for the Wren coaching system.
 
-import { load, isDeloadWeek, getDeloadWeeks, getWrenNotes, getCalorieGoal, getCurrentWeight, getWeeklyAvgWeight, getWeeklyAvgSeries, getWeightChange, getWeightLog, getNourishPhase, getCardioSessionsForWeek } from '../../lib/storage';
+import { load, isDeloadWeek, getDeloadWeeks, isInjuryWeek, getInjuryWeeks, getWrenNotes, getCalorieGoal, getCurrentWeight, getWeeklyAvgWeight, getWeeklyAvgSeries, getWeightChange, getWeightLog, getNourishPhase, getCardioSessionsForWeek } from '../../lib/storage';
 import { comboKey, comboLabel } from './tokens';
 
 // ---------- Plateau detection ----------
@@ -64,8 +64,15 @@ export function computeWeeklyMissesForProgram(program, sessions, { now = new Dat
     !(s.workoutName || '').includes('(past entry)')
   ).length;
 
-  const missedCount = Math.max(0, scheduledCount - loggedCount);
-  return { isCheckDay, scheduledCount, loggedCount, missedCount, weekNumber: currentWeek };
+  // An injured week is never treated as "short" — Lauren trained around an
+  // injury, so unlogged sessions here are expected, not a miss. We keep the
+  // real logged/scheduled counts (so the UI can still show "2 of 3") but zero
+  // out missedCount so the Sunday nag, the missed-session banner, and the
+  // punishment system all stay quiet. Matches Wren's rule that injury never
+  // counts toward a punishment.
+  const injured = isInjuryWeek(currentWeek);
+  const missedCount = injured ? 0 : Math.max(0, scheduledCount - loggedCount);
+  return { isCheckDay, scheduledCount, loggedCount, missedCount, injured, weekNumber: currentWeek };
 }
 
 // ---------- Missed session detection (legacy day-based) ----------
@@ -153,6 +160,8 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
   const weeklyMiss = computeWeeklyMissesForProgram(program, sessions, { force: true });
   // Confirmed deload weeks — Lauren has explicitly agreed to these.
   const deloadWeeks = getDeloadWeeks();
+  // Weeks Lauren flagged as injured — she trained reduced/not at all.
+  const injuryWeeks = getInjuryWeeks();
   // Long-term memory — facts Wren has saved with the remember action.
   const wrenNotes = getWrenNotes();
 
@@ -221,6 +230,7 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
     missedSessionDetails: recentMisses,
     weeklyMiss,
     deloadWeeks,
+    injuryWeeks,
     wrenNotes,
     thisWeekSessions: thisWeekSessions.map(s => s.workoutName),
     lastSessionData: lastSession ? {

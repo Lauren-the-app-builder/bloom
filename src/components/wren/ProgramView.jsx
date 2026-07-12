@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronRight, Sparkles } from 'lucide-react';
 import { c, comboLabel } from './tokens';
-import { getActiveProgram, setsForExercise, getSessions, load, isDeloadWeek } from '../../lib/storage';
+import { getActiveProgram, setsForExercise, getSessions, load, isDeloadWeek, isInjuryWeek } from '../../lib/storage';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 
 const MESO_LABELS = [
@@ -21,6 +21,7 @@ const STATUS_STYLES = {
   current: { background: c.blush, color: c.white, label: 'Current' },
   upcoming: { background: c.line, color: c.muted, label: 'Upcoming' },
   deload: { background: '#ede4f7', color: '#7040A0', label: 'Deload' },
+  injured: { background: '#fce4d6', color: '#B0511F', label: 'Injured' },
 };
 
 // Phase labels for each mesocycle, used by the Journey card.
@@ -269,7 +270,11 @@ export default function ProgramView() {
                   // Deload is opt-in — only weeks Lauren has confirmed
                   // with Wren are marked. No more automatic 4/8/12 rule.
                   const isDeloadWk = isDeloadWeek(wNum);
-                  const status = isDeloadWk ? 'deload' : weekStatus(wNum, currentWeek);
+                  // Injured weeks Lauren flagged with Wren. An injured week
+                  // takes visual precedence over deload/current — it's the
+                  // most important thing to see about that week at a glance.
+                  const isInjuredWk = isInjuryWeek(wNum);
+                  const status = isInjuredWk ? 'injured' : isDeloadWk ? 'deload' : weekStatus(wNum, currentWeek);
                   const st = STATUS_STYLES[status];
                   const isExpanded = expandedWeek === wNum;
 
@@ -303,6 +308,11 @@ export default function ProgramView() {
                           margin: '4px 0 8px', padding: '12px 14px', borderRadius: 12,
                           background: c.paper, border: `1px solid ${c.line}`,
                         }}>
+                          {isInjuredWk && (
+                            <div style={{ fontSize: 11, fontWeight: 600, color: '#B0511F', background: '#fce4d6', borderRadius: 8, padding: '6px 10px', marginBottom: 10, lineHeight: 1.4 }}>
+                              🩹 Injured week — you trained around an injury. Reduced sessions here are expected, not a miss.
+                            </div>
+                          )}
                           {isDeloadWk && (
                             <div style={{ fontSize: 11, fontWeight: 600, color: '#7040A0', background: '#ede4f7', borderRadius: 8, padding: '6px 10px', marginBottom: 10, lineHeight: 1.4 }}>
                               🌙 Deload week — fewer sets and ~10% lighter loads. Recover and let your body adapt.
