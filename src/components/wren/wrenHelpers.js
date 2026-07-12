@@ -238,6 +238,16 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
     injuryWeeks,
     skippedThisWeek,
     wrenNotes,
+    // Compact session history (newest first, capped) so Wren can answer
+    // date-specific "what/how much did I lift" questions in the normal chat
+    // too. The mid-workout chat passes its own full copy of sessions.
+    sessions: sorted.slice(0, 50).map(s => ({
+      workoutName: s.workoutName,
+      finishedAt: s.finishedAt,
+      exercises: s.exercises,
+      ...(s.deload ? { deload: true } : {}),
+      ...(s.hiitFinisher ? { hiitFinisher: true } : {}),
+    })),
     thisWeekSessions: thisWeekSessions.map(s => s.workoutName),
     lastSessionData: lastSession ? {
       name: lastSession.workoutName,

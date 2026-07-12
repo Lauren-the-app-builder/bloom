@@ -1371,10 +1371,30 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
       }
       return next;
     });
-    // Handle rest timer changes outside setSets.
+    // Handle rest timer + superset changes outside setSets (they live in
+    // their own state).
     for (const a of actions) {
       if (a.type === "set_rest" && a.exercise && isFinite(Number(a.seconds))) {
         setLiveRests((r) => ({ ...r, [a.exercise]: Number(a.seconds) }));
+      }
+      // Group two current exercises as a superset for this session. Both must
+      // be exercises in the live workout; each is first pulled out of any
+      // existing group so we never leave a stale/overlapping pairing.
+      if (a.type === "superset" && a.superset_a && a.superset_b && a.superset_a !== a.superset_b) {
+        const names = new Set(sets.map((e) => e.name));
+        if (names.has(a.superset_a) && names.has(a.superset_b)) {
+          setLiveSupersets((prev) => {
+            const groups = prev
+              .map((g) => g.filter((n) => n !== a.superset_a && n !== a.superset_b))
+              .filter((g) => g.length >= 2);
+            groups.push([a.superset_a, a.superset_b]);
+            return groups;
+          });
+        }
+      }
+      // Break any superset group containing this exercise.
+      if (a.type === "unlink_superset" && a.exercise) {
+        setLiveSupersets((prev) => prev.map((g) => g.filter((n) => n !== a.exercise)).filter((g) => g.length >= 2));
       }
     }
   };
@@ -1397,7 +1417,9 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
         `{type:"add_set",exercise}, ` +
         `{type:"add_exercise",exercise,sets?,reps?,weight?}, ` +
         `{type:"remove_exercise",exercise}, ` +
-        `{type:"reorder",order:[exercise names in new order]}.]`;
+        `{type:"reorder",order:[exercise names in new order]}, ` +
+        `{type:"superset",superset_a,superset_b} (group two current exercises), ` +
+        `{type:"unlink_superset",exercise} (ungroup).]`;
       const { reply, actions } = await askWren(augmented, {
         myWorkouts: [workout],
         schedule: {},
@@ -1495,6 +1517,11 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
   const [showFormTips, setShowFormTips] = useState(null);
   // Live-editable rest times per exercise (overrides workout.rests during this session).
   const [liveRests, setLiveRests] = useState({ ...(workout.rests || {}) });
+  // Live superset groups for THIS session. Seeded from the workout's program
+  // supersets and mutated by Wren's mid-workout superset / unlink_superset
+  // actions. Session-only (like reorder/add_set) — grouping is a display
+  // concept and doesn't alter the logged session or the base program.
+  const [liveSupersets, setLiveSupersets] = useState(() => (workout.supersets || []).map(g => [...g]));
   // Rest timer uses absolute endsAt timestamp so it survives backgrounding.
   // {endsAt: epoch ms, total: seconds, exercise: string}
   const [restTimer, setRestTimer] = useState(null);
@@ -1703,7 +1730,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
       // Superset handling: if this exercise is in a superset group, only
       // start the rest timer when ALL exercises in the group have completed
       // their set at this row index (the round is done).
-      const ssGroup = (workout.supersets || []).find((g) => g.includes(name));
+      const ssGroup = liveSupersets.find((g) => g.includes(name));
       let startRest = true;
       if (ssGroup && ssGroup.length > 1) {
         const groupSets = next.filter((ex) => ssGroup.includes(ex.name));
@@ -2208,7 +2235,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
       {/* exercises */}
       <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 14, paddingBottom: 140 }}>
         {(() => {
-          const supersets = workout.supersets || [];
+          const supersets = liveSupersets;
           const groupOf = (name) => supersets.findIndex(g => g.includes(name));
           const groups = [];
           const consumed = new Set();

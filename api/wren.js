@@ -69,6 +69,7 @@ Your personality:
 - Honest and direct when it matters — you don't sugarcoat bad sessions or accept lazy excuses. But you're never cold or clinical. (Pain or injury is NEVER a "lazy excuse" — the moment it's physical, you switch out of tough-coach mode and into physical-therapist mode. See Injury prevention below.)
 - You use web search silently to back up advice. You cite the principle, not the URL. Never say "according to my research" — just state the fact confidently.
 - You never guess weights without data. If you don't have enough logged history to make a weight recommendation, ask for it.
+- You have Lauren's full logged workout history in the context block ("Full workout history"). When she asks what she did or how much she lifted on a specific date or in a past session — including in the middle of an active workout — look it up there and answer with the specific numbers (date, exercise, weight × reps). If a date genuinely has no logged session, tell her that instead of making something up.
 
 Injury prevention & physical therapy (core responsibility — this OVERRIDES every coaching, progression, and missed-session rule below when they conflict):
 - Your prime directive is to keep Lauren healthy for the long haul. Preventing injury always outranks hitting a number, finishing a set, completing a session, or staying on schedule. When health and performance conflict, health wins — every time, no exceptions.
@@ -225,7 +226,7 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
 4. When you DO regenerate, include the COMPLETE 12-week program — all weeks, all sessions, all exercises with sets, reps, and target weights. Never send a partial program.
 
 5. MID-WORKOUT CHANGES (when the user message indicates mid-workout context): when Lauren asks for any exercise change during an active workout — swap one exercise for another, add an exercise, remove an exercise, change reps/weight — you MUST FIRST ask whether the change is "just for today, or always?" Do NOT emit any action in that same turn. Wait for her answer. Once she answers:
-   - "Just for today" / "today" / "today only": emit ONLY the matching live-workout action(s) (set_target_weight, set_target, set_rest, add_set, add_exercise, remove_exercise, reorder). Do NOT emit edit_workout — the program stays as-is.
+   - "Just for today" / "today" / "today only": emit ONLY the matching live-workout action(s) (set_target_weight, set_target, set_rest, add_set, add_exercise, remove_exercise, reorder, superset, unlink_superset). Do NOT emit edit_workout — the program stays as-is.
    - "Always" / "permanently" / "going forward": emit BOTH (a) the live-workout action(s) so the current workout updates immediately AND (b) the matching edit_workout action(s) so the program is permanently updated across all 12 weeks. For a swap, that's typically a remove_exercise + add_exercise live pair plus an edit_workout with swap_from + swap_to.
    If she's ambiguous, ask again — never guess. Saying "got it" or "done" in text does not change anything; you must emit the actions.
 
@@ -239,6 +240,35 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
     .map(([name, v]) => `${name}: ${v.weight}${unit} × ${v.reps} reps`)
     .join(', ');
 
+  // Compact, date-indexed log of Lauren's actual logged sessions so Wren can
+  // answer "what did I lift / how much on <date>" questions directly. Both the
+  // normal chat and the mid-workout chat pass `sessions`, so this works in an
+  // active workout too. Newest first, capped so the payload stays bounded.
+  const formatSessionHistory = (list) => {
+    if (!Array.isArray(list) || !list.length) return 'none logged yet';
+    return [...list]
+      .filter(s => s && s.finishedAt && !String(s.workoutName || '').includes('(past entry)'))
+      .sort((a, b) => (Number(b.finishedAt) || 0) - (Number(a.finishedAt) || 0))
+      .slice(0, 50)
+      .map(s => {
+        const d = new Date(Number(s.finishedAt));
+        const date = isNaN(d.getTime()) ? '?' : d.toISOString().slice(0, 10);
+        const exParts = [];
+        for (const [name, setsArr] of Object.entries(s.exercises || {})) {
+          if (!Array.isArray(setsArr) || !setsArr.length) continue;
+          const setStrs = setsArr.map(set => {
+            if (Array.isArray(set.bands)) return `${set.bands.join('+')} bands×${set.reps}`;
+            if (typeof set.band === 'string') return `${set.band} band×${set.reps}`;
+            return `${set.weight}${unit}×${set.reps}`;
+          });
+          exParts.push(`${name}: ${setStrs.join(', ')}`);
+        }
+        const tags = [s.deload ? 'deload' : null, s.hiitFinisher ? '+HIIT' : null].filter(Boolean).join(' ');
+        return `${date} — ${s.workoutName}${tags ? ` [${tags}]` : ''}: ${exParts.join(' | ') || 'no sets recorded'}`;
+      })
+      .join('\n');
+  };
+
   const contextBlock = [
     `Current week: ${currentWeek ?? '?'} of 12`,
     `Mesocycle: ${currentMesocycle ?? '?'} (${phase ?? '?'})`,
@@ -247,6 +277,7 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
     `Injured weeks (reduced/skipped training around an injury — never counts as a miss): ${injuryWeeks.length ? injuryWeeks.join(', ') : 'none'}`,
     `Sessions skipped this week (intentional — NOT misses): ${skippedThisWeek.length ? skippedThisWeek.map(s => `${s.label}${s.reason ? ` (${s.reason})` : ''}`).join(', ') : 'none'}`,
     `Lauren's current lift bests: ${liftBestLines || 'no data yet'}`,
+    `Full workout history (Lauren's actual logged sessions, newest first — READ THIS to answer "what/how much did I lift on <date>" or "what did I do last Session B" questions; quote the real numbers, and if a date has no session say so rather than guessing):\n${formatSessionHistory(sessions)}`,
     `Sessions this week: ${thisWeekSessions.length > 0 ? JSON.stringify(thisWeekSessions) : 'none yet'}`,
     `Weekly miss snapshot: ${weeklyMiss ? `week ${weeklyMiss.weekNumber} — ${weeklyMiss.loggedCount}/${weeklyMiss.scheduledCount} logged, ${weeklyMiss.missedCount} short${weeklyMiss.isCheckDay ? ' (Sunday: week is closing)' : ''}` : 'n/a'}`,
     `Last session data: ${lastSessionData ? JSON.stringify(lastSessionData) : 'none'}`,
@@ -308,7 +339,7 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
             items: {
               type: 'object',
               properties: {
-                type: { type: 'string', description: 'Action type. Program/chat scope: generate_program, assign_punishment, flag_plateau, set_schedule, edit_workout, apply_deload, remove_deload, mark_injured (flag a program week as an injury week — pair with week_number), unmark_injured (clear that flag — pair with week_number), skip_session (mark one lifting session A/B/C as intentionally skipped this week — pair with session_label, optional week_number, optional reason), unskip_session (clear a skip — pair with session_label, optional week_number), add_cardio_session (week-scoped, Lauren-triggered cardio — pair with `name` and `day`), remember (save a long-term fact about Lauren), forget_note (drop one). Live-workout scope (only valid when the user message says it is mid-workout): set_target_weight, set_target (rep target), set_rest, add_set, add_exercise, remove_exercise, reorder.' },
+                type: { type: 'string', description: 'Action type. Program/chat scope: generate_program, assign_punishment, flag_plateau, set_schedule, edit_workout, apply_deload, remove_deload, mark_injured (flag a program week as an injury week — pair with week_number), unmark_injured (clear that flag — pair with week_number), skip_session (mark one lifting session A/B/C as intentionally skipped this week — pair with session_label, optional week_number, optional reason), unskip_session (clear a skip — pair with session_label, optional week_number), add_cardio_session (week-scoped, Lauren-triggered cardio — pair with `name` and `day`), remember (save a long-term fact about Lauren), forget_note (drop one). Live-workout scope (only valid when the user message says it is mid-workout): set_target_weight, set_target (rep target), set_rest, add_set, add_exercise, remove_exercise, reorder, superset (group two current exercises for this session — pair superset_a + superset_b), unlink_superset (ungroup — pass the exercise name).' },
                 program: { type: 'object', description: 'For generate_program: the full program object with weeks array' },
                 description: { type: 'string', description: 'For assign_punishment: the punishment description' },
                 exercise: { type: 'string', description: 'For flag_plateau: the exercise name. For edit_workout: the exercise whose reps and/or sets you are changing (pair with reps and/or sets).' },
