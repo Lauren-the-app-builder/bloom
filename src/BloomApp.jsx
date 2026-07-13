@@ -1378,23 +1378,14 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
         setLiveRests((r) => ({ ...r, [a.exercise]: Number(a.seconds) }));
       }
       // Group two current exercises as a superset for this session. Both must
-      // be exercises in the live workout; each is first pulled out of any
-      // existing group so we never leave a stale/overlapping pairing.
-      if (a.type === "superset" && a.superset_a && a.superset_b && a.superset_a !== a.superset_b) {
+      // actually be exercises in the live workout.
+      if (a.type === "superset" && a.superset_a && a.superset_b) {
         const names = new Set(sets.map((e) => e.name));
-        if (names.has(a.superset_a) && names.has(a.superset_b)) {
-          setLiveSupersets((prev) => {
-            const groups = prev
-              .map((g) => g.filter((n) => n !== a.superset_a && n !== a.superset_b))
-              .filter((g) => g.length >= 2);
-            groups.push([a.superset_a, a.superset_b]);
-            return groups;
-          });
-        }
+        if (names.has(a.superset_a) && names.has(a.superset_b)) linkSuperset(a.superset_a, a.superset_b);
       }
-      // Break any superset group containing this exercise.
+      // Break the superset group containing this exercise.
       if (a.type === "unlink_superset" && a.exercise) {
-        setLiveSupersets((prev) => prev.map((g) => g.filter((n) => n !== a.exercise)).filter((g) => g.length >= 2));
+        dissolveSuperset([a.exercise]);
       }
     }
   };
@@ -1522,6 +1513,25 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
   // actions. Session-only (like reorder/add_set) — grouping is a display
   // concept and doesn't alter the logged session or the base program.
   const [liveSupersets, setLiveSupersets] = useState(() => (workout.supersets || []).map(g => [...g]));
+  // Group two exercises as a superset for this session — each is first pulled
+  // out of any existing group so we never leave an overlapping pairing. Shared
+  // by Wren's mid-workout superset action and the manual link button.
+  const linkSuperset = (aName, bName) => {
+    if (!aName || !bName || aName === bName) return;
+    setLiveSupersets((prev) => {
+      const groups = prev
+        .map((g) => g.filter((n) => n !== aName && n !== bName))
+        .filter((g) => g.length >= 2);
+      groups.push([aName, bName]);
+      return groups;
+    });
+  };
+  // Dissolve whichever superset group contains any of `names` back into
+  // singles. Used by both the unlink_superset action and the manual button.
+  const dissolveSuperset = (names) => {
+    const drop = new Set(names);
+    setLiveSupersets((prev) => prev.filter((g) => !g.some((n) => drop.has(n))));
+  };
   // Rest timer uses absolute endsAt timestamp so it survives backgrounding.
   // {endsAt: epoch ms, total: seconds, exercise: string}
   const [restTimer, setRestTimer] = useState(null);
@@ -2259,6 +2269,13 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
                   <div style={{ position: "absolute", top: -10, left: 16, background: c.rosedeep, color: "white", fontSize: 9, fontWeight: 700, letterSpacing: 1, padding: "3px 10px", borderRadius: 999, display: "flex", alignItems: "center", gap: 4 }}>
                     <Link2 size={10} /> SUPERSET
                   </div>
+                  <button
+                    onClick={() => dissolveSuperset(exs.map((e) => e.name))}
+                    style={{ position: "absolute", top: -10, right: 12, background: c.white, border: `1px solid ${c.line}`, color: c.muted, fontSize: 9, fontWeight: 700, letterSpacing: 0.5, padding: "3px 9px", borderRadius: 999, cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}
+                    title="Break superset"
+                  >
+                    <X size={10} /> Unlink
+                  </button>
                   <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12, marginTop: 4 }}>
                     {exs.map((ex, idx) => {
                       const exData = allExercises.find(e => e.name === ex.name);
@@ -2353,6 +2370,14 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
+                  {/* Superset with the next exercise — only when there IS a
+                      next exercise and it isn't already in a group, so tapping
+                      always cleanly pairs two singles for this session. */}
+                  {ei + 1 < sets.length && groupOf(sets[ei + 1].name) === -1 && (
+                    <button onClick={() => linkSuperset(ex.name, sets[ei + 1].name)} style={{ ...iconBtn, background: c.white }} title={`Superset with ${sets[ei + 1].name}`}>
+                      <Link2 size={14} color={c.muted} />
+                    </button>
+                  )}
                   <button onClick={() => { setShowExPicker({ mode: "replace", ei }); setExPickerSearch(""); }} style={{ ...iconBtn, background: c.white }} title="Replace exercise">
                     <RefreshCw size={14} color={c.muted} />
                   </button>
