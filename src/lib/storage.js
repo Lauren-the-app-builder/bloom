@@ -484,6 +484,24 @@ export function replaceWeightForDate(weight, ts = Date.now(), tags = null, note 
   save('nourishWeightLog', filtered);
   return filtered;
 }
+// Delete the weigh-in with this exact timestamp. `ts` is the stable per-entry
+// id the UI lists by (one reading per millisecond), so this removes exactly the
+// tapped row. Returns the new log. Pairs with addWeight/replaceWeightForDate so
+// Lauren can delete a mis-dated entry and re-add it for the correct date.
+export function deleteWeight(ts) {
+  const t = Number(ts);
+  if (!Number.isFinite(t)) return getWeightLog();
+  const next = getWeightLog().filter((r) => r.ts !== t);
+  save('nourishWeightLog', next);
+  return next;
+}
+// Is there already a reading on the same local calendar day as `ts`? Used to
+// decide whether logging for a date should overwrite or append. Generalizes
+// hasWeightToday() to any date.
+export function hasWeightForDate(ts) {
+  const key = localDateKey(ts);
+  return getWeightLog().some((r) => localDateKey(r.ts) === key);
+}
 // Did we already log today? UI uses this to decide whether to confirm.
 export function hasWeightToday() {
   const today = localDateKey(Date.now());

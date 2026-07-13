@@ -16,9 +16,10 @@ import {
   getWeeklyAvgWeight,
   getWeeklyAvgSeries,
   getWeightChange,
-  hasWeightToday,
+  hasWeightForDate,
   replaceWeightForDate,
   addWeight,
+  deleteWeight,
 } from '../../lib/storage';
 
 // Mockup-specific accents — pinker tones than the global tokens so this
@@ -68,6 +69,13 @@ export default function NourishView({ onOpenSettings }) {
   const [goalDraft, setGoalDraft] = useState('');
   const [editingGoal, setEditingGoal] = useState(false);
   const [weightDraft, setWeightDraft] = useState('');
+  // Which date the weigh-in is for. Defaults to today, but Lauren can pick a
+  // past date to backfill or correct a mis-dated entry. `type="date"` value is
+  // a local YYYY-MM-DD string.
+  const [logDate, setLogDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
   // The trend chart + full weigh-in history live behind this — the main card
   // stays a quick glance (current + weekly avg + log), and "See historical
   // data" opens the detail view with the trend chart on top.
@@ -131,21 +139,32 @@ export default function NourishView({ onOpenSettings }) {
     setWeightDraft(v);
   };
 
-  const logToday = () => {
+  // Local YYYY-MM-DD for today — caps the date picker so a weigh-in can't be
+  // logged in the future.
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+  const logWeight = () => {
     const n = Number(weightDraft);
     if (!Number.isFinite(n) || n <= 0) return;
-    if (hasWeightToday()) {
-      const ok = window.confirm(
-        "You already logged a weight today. Replace it with this new reading?"
-      );
+    const isToday = logDate === todayStr;
+    // Today keeps the real clock time (natural ordering); a past date anchors
+    // to local noon so it lands squarely on that calendar day regardless of TZ.
+    const ts = isToday ? Date.now() : new Date(`${logDate}T12:00:00`).getTime();
+    if (!Number.isFinite(ts)) return;
+    if (hasWeightForDate(ts)) {
+      const label = isToday
+        ? 'today'
+        : new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const ok = window.confirm(`You already logged a weight for ${label}. Replace it with this reading?`);
       if (!ok) return;
-      replaceWeightForDate(n, Date.now(), weighInTags, weighInNote);
+      replaceWeightForDate(n, ts, weighInTags, weighInNote);
     } else {
-      addWeight(n, Date.now(), weighInTags, weighInNote);
+      addWeight(n, ts, weighInTags, weighInNote);
     }
     setWeightDraft('');
     setWeighInTags({ period: false, alcohol: false, restaurant: false });
     setWeighInNote('');
+    setLogDate(todayStr);
     refresh();
   };
 
@@ -442,21 +461,34 @@ export default function NourishView({ onOpenSettings }) {
             placeholder="Add a note (optional)…"
             value={weighInNote}
             onChange={(e) => setWeighInNote(e.target.value.slice(0, 280))}
-            onKeyDown={(e) => { if (e.key === 'Enter') logToday(); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') logWeight(); }}
             style={{ ...inputStyle, width: '100%', flex: 'none', marginBottom: 10 }}
           />
+          {/* Date for this weigh-in — defaults to today; pick a past date to
+              backfill or fix a mis-dated entry. Capped at today (no future
+              readings). */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: N.mutedText, flexShrink: 0 }}>Date</span>
+            <input
+              type="date"
+              value={logDate}
+              max={todayStr}
+              onChange={(e) => setLogDate(e.target.value || todayStr)}
+              style={{ ...inputStyle, colorScheme: 'light' }}
+            />
+          </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <input
               type="text"
               inputMode="decimal"
-              placeholder="Log today's weight…"
+              placeholder={logDate === todayStr ? "Log today's weight…" : 'Weight (lbs) for selected date…'}
               value={weightDraft}
               onChange={(e) => onWeightChange(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') logToday(); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') logWeight(); }}
               style={inputStyle}
             />
             <button
-              onClick={logToday}
+              onClick={logWeight}
               disabled={!weightDraft || Number(weightDraft) <= 0}
               style={{ ...saveBtnStyle, opacity: !weightDraft || Number(weightDraft) <= 0 ? 0.55 : 1 }}
             >
@@ -488,6 +520,16 @@ export default function NourishView({ onOpenSettings }) {
 // full list of every weigh-in with its context tags. Read-only; logging stays
 // on the main Nourish card.
 function NourishHistory({ onClose }) {
+  // Re-read the store after a delete. The parent NourishView re-reads on close,
+  // so deletions here are reflected there too.
+  const [bump, setBump] = useState(0);
+  void bump;
+  const removeEntry = (r) => {
+    const label = new Date(r.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    if (!window.confirm(`Delete the ${r.weight.toFixed(1)} lb weigh-in from ${label}?`)) return;
+    deleteWeight(r.ts);
+    setBump((b) => b + 1);
+  };
   const log = getWeightLog();
   const series = getWeeklyAvgSeries(0); // full history, one avg per week
   const dailyChange = getWeightChange('daily');
@@ -655,6 +697,17 @@ function NourishHistory({ onClose }) {
                     <span style={{ fontSize: 14, fontWeight: 600, color: N.darkText, minWidth: 56, textAlign: 'right' }}>
                       {r.weight.toFixed(1)} <span style={{ fontSize: 11, fontWeight: 400, color: N.mutedText }}>lbs</span>
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => removeEntry(r)}
+                      aria-label={`Delete weigh-in from ${new Date(r.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+                        display: 'flex', alignItems: 'center', color: N.hintText, flexShrink: 0,
+                      }}
+                    >
+                      <X size={14} />
+                    </button>
                   </span>
                 </div>
                 {r.note && (
