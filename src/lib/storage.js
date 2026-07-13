@@ -561,6 +561,31 @@ export function getWeeklyAvgSeries(weeks = 0) {
     }));
   return weeks > 0 ? series.slice(-weeks) : series;
 }
+// Weigh-ins grouped by Monday-anchored week for the history view — newest week
+// first, each week carrying its own average and its readings (newest first).
+// Uses the SAME mondayOfWeek bucketing as getWeeklyAvgSeries so the grouped
+// list and the trend chart always agree on week boundaries and averages.
+// Each group: { weekStart (ms, Monday midnight), avg (0.1), count, entries }.
+export function getWeighInsByWeek() {
+  const log = getWeightLog(); // ascending by ts, normalized shape
+  const buckets = new Map(); // weekStart -> { weekStart, sum, count, entries }
+  for (const r of log) {
+    const ws = mondayOfWeek(r.ts);
+    let b = buckets.get(ws);
+    if (!b) { b = { weekStart: ws, sum: 0, count: 0, entries: [] }; buckets.set(ws, b); }
+    b.sum += r.weight;
+    b.count += 1;
+    b.entries.push(r);
+  }
+  return [...buckets.values()]
+    .sort((a, b) => b.weekStart - a.weekStart) // newest week first
+    .map((b) => ({
+      weekStart: b.weekStart,
+      avg: +(b.sum / b.count).toFixed(1),
+      count: b.count,
+      entries: b.entries.slice().sort((x, y) => y.ts - x.ts), // newest first within the week
+    }));
+}
 // Signed weight change over a window. `period` is 'daily' | 'weekly' |
 // 'monthly'. Compares the most recent reading against the most recent
 // reading at-or-before (now - window). Returns null if either side is

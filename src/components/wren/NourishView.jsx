@@ -15,6 +15,7 @@ import {
   getCurrentWeight,
   getWeeklyAvgWeight,
   getWeeklyAvgSeries,
+  getWeighInsByWeek,
   getWeightChange,
   hasWeightForDate,
   replaceWeightForDate,
@@ -530,8 +531,19 @@ function NourishHistory({ onClose }) {
     deleteWeight(r.ts);
     setBump((b) => b + 1);
   };
-  const log = getWeightLog();
+  const weeks = getWeighInsByWeek(); // grouped by week, newest first
+  const hasAny = weeks.some((w) => w.entries.length);
   const series = getWeeklyAvgSeries(0); // full history, one avg per week
+  // "Jul 6–12" / "Jun 29 – Jul 5" label for a Monday-anchored week.
+  const weekLabel = (weekStart) => {
+    const s = new Date(weekStart);
+    const e = new Date(weekStart + 6 * 86400000);
+    const sM = s.toLocaleDateString('en-US', { month: 'short' });
+    const eM = e.toLocaleDateString('en-US', { month: 'short' });
+    return sM === eM
+      ? `${sM} ${s.getDate()}–${e.getDate()}`
+      : `${sM} ${s.getDate()} – ${eM} ${e.getDate()}`;
+  };
   const dailyChange = getWeightChange('daily');
   const weeklyChange = getWeightChange('weekly');
   const monthlyChange = getWeightChange('monthly');
@@ -670,54 +682,64 @@ function NourishHistory({ onClose }) {
         {/* Full weigh-in history */}
         <div style={card}>
           <p style={label}>All weigh-ins</p>
-          {log.length === 0 && (
+          {!hasAny && (
             <p style={{ fontSize: 12, color: N.hintText, margin: 0, textAlign: 'center' }}>No weigh-ins yet.</p>
           )}
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {log.slice().reverse().map((r, i) => (
-              <div
-                key={r.ts}
-                style={{
-                  padding: '11px 0',
-                  borderTop: i === 0 ? 'none' : `0.5px solid ${N.headerBg}`,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 13, color: N.darkText }}>
-                    {new Date(r.ts).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                  </span>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                    {r.tags && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                        {r.tags.period && <Droplet size={12} color={c.rosedeep} strokeWidth={2} />}
-                        {r.tags.alcohol && <Wine size={12} color={c.rosedeep} strokeWidth={2} />}
-                        {r.tags.restaurant && <Utensils size={12} color={c.rosedeep} strokeWidth={2} />}
-                      </span>
-                    )}
-                    <span style={{ fontSize: 14, fontWeight: 600, color: N.darkText, minWidth: 56, textAlign: 'right' }}>
-                      {r.weight.toFixed(1)} <span style={{ fontSize: 11, fontWeight: 400, color: N.mutedText }}>lbs</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => removeEntry(r)}
-                      aria-label={`Delete weigh-in from ${new Date(r.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
-                      style={{
-                        background: 'none', border: 'none', cursor: 'pointer', padding: 4,
-                        display: 'flex', alignItems: 'center', color: N.hintText, flexShrink: 0,
-                      }}
-                    >
-                      <X size={14} />
-                    </button>
-                  </span>
-                </div>
-                {r.note && (
-                  <p style={{ fontSize: 12, color: N.mutedText, margin: '4px 0 0', lineHeight: 1.4 }}>
-                    {r.note}
-                  </p>
-                )}
+          {weeks.map((wk) => (
+            <div key={wk.weekStart} style={{ marginBottom: 16 }}>
+              {/* Week header: date range + that week's average + count. */}
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, paddingBottom: 6, borderBottom: `0.5px solid ${N.cardBorder}` }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: N.darkText }}>{weekLabel(wk.weekStart)}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: c.rosedeep, textAlign: 'right' }}>
+                  avg {wk.avg.toFixed(1)} <span style={{ fontSize: 11, fontWeight: 400, color: N.mutedText }}>lbs</span>
+                  <span style={{ fontSize: 11, fontWeight: 400, color: N.hintText }}> · {wk.count} weigh-in{wk.count === 1 ? '' : 's'}</span>
+                </span>
               </div>
-            ))}
-          </div>
+              {wk.entries.map((r, i) => (
+                <div
+                  key={r.ts}
+                  style={{
+                    padding: '11px 0',
+                    borderTop: i === 0 ? 'none' : `0.5px solid ${N.headerBg}`,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 13, color: N.darkText }}>
+                      {new Date(r.ts).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                    </span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      {r.tags && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                          {r.tags.period && <Droplet size={12} color={c.rosedeep} strokeWidth={2} />}
+                          {r.tags.alcohol && <Wine size={12} color={c.rosedeep} strokeWidth={2} />}
+                          {r.tags.restaurant && <Utensils size={12} color={c.rosedeep} strokeWidth={2} />}
+                        </span>
+                      )}
+                      <span style={{ fontSize: 14, fontWeight: 600, color: N.darkText, minWidth: 56, textAlign: 'right' }}>
+                        {r.weight.toFixed(1)} <span style={{ fontSize: 11, fontWeight: 400, color: N.mutedText }}>lbs</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeEntry(r)}
+                        aria-label={`Delete weigh-in from ${new Date(r.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+                          display: 'flex', alignItems: 'center', color: N.hintText, flexShrink: 0,
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  </div>
+                  {r.note && (
+                    <p style={{ fontSize: 12, color: N.mutedText, margin: '4px 0 0', lineHeight: 1.4 }}>
+                      {r.note}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       </div>
     </div>
