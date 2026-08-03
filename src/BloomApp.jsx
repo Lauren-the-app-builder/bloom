@@ -94,6 +94,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useLocalState, recordSession, getSessions, getLastSession, getBaselineSessions, updateSession, deleteSession, load, save, getActiveProgram, getMissedSessions, ensureSessionAOrder, ensureSessionBPulldown, ensureSessionCLegCurl, getWrenNotes, removeWrenNote, clearWrenNotes } from "./lib/storage";
+import { deleteWorkoutRemote } from "./lib/sync";
 import { subscribeToPush, scheduleRestPush, cancelRestPush } from "./lib/push";
 import WrenView from "./components/wren/WrenView";
 import TodayView from "./components/wren/TodayView";
@@ -350,6 +351,19 @@ export default function BloomApp() {
   ]);
   // weekly schedule: 0=Sun ... 6=Sat. null = rest day
   const [schedule, setSchedule] = useLocalState("schedule", { 0: null, 1: "w1", 2: "w2", 3: null, 4: "w3", 5: "w1", 6: null });
+  // Removes a saved custom workout everywhere: local state, any day it's
+  // scheduled for, and the remote row (myWorkouts otherwise only ever
+  // upserts — without the explicit remote delete, the next pullAll() would
+  // resurrect a "deleted" workout from the server).
+  const deleteMyWorkout = (id) => {
+    setMyWorkouts(myWorkouts.filter(w => w.id !== id));
+    const nextSchedule = { ...schedule };
+    for (const day of Object.keys(nextSchedule)) {
+      if (nextSchedule[day] === id) nextSchedule[day] = null;
+    }
+    setSchedule(nextSchedule);
+    deleteWorkoutRemote(id);
+  };
   const [showSchedule, setShowSchedule] = useState(false);
   const [showFocusLift, setShowFocusLift] = useState(false);
   const [showWeek, setShowWeek] = useState(false);
@@ -513,6 +527,7 @@ export default function BloomApp() {
             background={todayBackground}
             myWorkouts={myWorkouts}
             onCreateCustomWorkout={() => { setEditingWorkout(null); setShowBuilder(true); }}
+            onDeleteWorkout={deleteMyWorkout}
           />
         )}
         {tab === "nourish" && (

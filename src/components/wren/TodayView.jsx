@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, CalendarRange, Zap, HeartPulse, Palmtree, Plus } from 'lucide-react';
+import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, CalendarRange, Zap, HeartPulse, Palmtree, Plus, Trash2 } from 'lucide-react';
 import { c } from './tokens';
 import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage, getCardioSessionsForWeek, addCardioSession, removeCardioSession, getSkippedSessionsForWeek, removeSkippedSession } from '../../lib/storage';
 import { computeActiveNudge, markTriggerSeen } from './wrenTriggers';
@@ -14,7 +14,7 @@ const SESSION_COLORS = {
   C: { gradient: 'linear-gradient(160deg, #FFD3B8 0%, #F4B8D4 50%, #C8B4E8 100%)', shadow: 'rgba(244,184,212,0.35)' },
 };
 
-export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump, onAskWren, onViewProgram, onOpenHistory, onOpenSettings, background = 'sunset', myWorkouts = [], onCreateCustomWorkout }) {
+export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump, onAskWren, onViewProgram, onOpenHistory, onOpenSettings, background = 'sunset', myWorkouts = [], onCreateCustomWorkout, onDeleteWorkout }) {
   // Per-background hero config. Sunset's values are LOCKED — that look is
   // the one the design was tuned for. Lauren shares sunset's size + mask
   // but uses a small vertical offset so her head sits below the date,
@@ -447,22 +447,39 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
           {myWorkouts.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
               {myWorkouts.map((w) => (
-                <button
-                  key={w.id}
-                  onClick={() => onStartWorkout && onStartWorkout(w)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '10px 12px', borderRadius: 16, background: c.white,
-                    border: `1px solid ${c.line}`, cursor: 'pointer', textAlign: 'left',
-                    fontFamily: 'inherit', width: '100%',
-                  }}
-                >
-                  <Play size={13} color={c.rosedeep} style={{ flexShrink: 0 }} />
-                  <span style={{ fontSize: 13, fontWeight: 600, color: c.charcoal, flex: 1, minWidth: 0 }}>
-                    {w.name}
-                  </span>
-                  <ChevronRight size={14} color={c.muted} />
-                </button>
+                <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <button
+                    onClick={() => onStartWorkout && onStartWorkout(w)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '10px 12px', borderRadius: 16, background: c.white,
+                      border: `1px solid ${c.line}`, cursor: 'pointer', textAlign: 'left',
+                      fontFamily: 'inherit', width: '100%', flex: 1, minWidth: 0,
+                    }}
+                  >
+                    <Play size={13} color={c.rosedeep} style={{ flexShrink: 0 }} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: c.charcoal, flex: 1, minWidth: 0 }}>
+                      {w.name}
+                    </span>
+                    <ChevronRight size={14} color={c.muted} />
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (onDeleteWorkout && confirm(`Delete "${w.name}"? This can't be undone.`)) {
+                        onDeleteWorkout(w.id);
+                      }
+                    }}
+                    title="Delete workout"
+                    style={{
+                      width: 36, height: 36, borderRadius: 12, flexShrink: 0,
+                      border: `1px solid ${c.line}`, background: c.white,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Trash2 size={13} color={c.muted} />
+                  </button>
+                </div>
               ))}
             </div>
           )}
