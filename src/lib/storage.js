@@ -821,7 +821,13 @@ export function currentWeekKey(d = new Date()) {
   const x = new Date(d); x.setHours(0, 0, 0, 0);
   const off = x.getDay() === 0 ? 6 : x.getDay() - 1; // days since Monday
   x.setDate(x.getDate() - off);
-  return x.toISOString().slice(0, 10);
+  // Format from LOCAL date fields, not toISOString() (which is UTC) — in any
+  // UTC+ timezone, local midnight Monday can fall on the previous UTC
+  // calendar day, so an ISO-string slice silently produces a Sunday key.
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, '0');
+  const day = String(x.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 // Monday-anchored key for next week. Used when Lauren plans next week
