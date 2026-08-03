@@ -280,6 +280,53 @@ export function removeInjuryWeek(weekNum) {
   return next;
 }
 
+// ---------- Off weeks (injury / vacation, calendar-based) ----------
+// Distinct from the training-week-number injuryWeeks above. This one is
+// keyed by CALENDAR week (Monday-anchored, e.g. "2026-07-20") because it
+// drives pausing week progression (see getCurrentWeekAndMesocycle in
+// wrenHelpers.js) — a training week number can't be the key for that, since
+// the number itself is only knowable once you already know which past
+// calendar weeks were paused. Set directly from the home screen (not via
+// Wren chat). Reason is 'injury' or 'vacation'; both mean "no training
+// expected this week, don't advance the program."
+//
+// Shape: { [weekKey]: { reason: 'injury'|'vacation', createdAt } }
+const OFF_WEEKS_KEY = 'offWeeks';
+const OFF_WEEK_REASONS = new Set(['injury', 'vacation']);
+
+// Monday-anchored key for the calendar week containing `d`, e.g. "2026-07-20".
+// Alias for currentWeekKey (defined further down) — same bucketing, named for
+// clarity at off-week call sites that pass an arbitrary date, not just "now".
+export function weekKeyFor(d = new Date()) {
+  return currentWeekKey(d);
+}
+
+export function getOffWeeks() {
+  const v = load(OFF_WEEKS_KEY, {});
+  return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+}
+
+export function getOffWeek(weekKey) {
+  const entry = getOffWeeks()[weekKey];
+  return entry && OFF_WEEK_REASONS.has(entry.reason) ? entry.reason : null;
+}
+
+export function setOffWeek(weekKey, reason) {
+  if (!weekKey || !OFF_WEEK_REASONS.has(reason)) return getOffWeeks();
+  const next = { ...getOffWeeks(), [weekKey]: { reason, createdAt: Date.now() } };
+  save(OFF_WEEKS_KEY, next);
+  return next;
+}
+
+export function clearOffWeek(weekKey) {
+  const current = getOffWeeks();
+  if (!(weekKey in current)) return current;
+  const next = { ...current };
+  delete next[weekKey];
+  save(OFF_WEEKS_KEY, next);
+  return next;
+}
+
 // ---------- Skipped sessions ----------
 // A specific lifting session (A/B/C) Lauren has intentionally skipped for a
 // given program week — e.g. she's injured and dropping Session C this week.

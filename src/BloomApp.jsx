@@ -511,6 +511,8 @@ export default function BloomApp() {
             onOpenHistory={() => setShowWeek(true)}
             onOpenSettings={() => setShowSettings(true)}
             background={todayBackground}
+            myWorkouts={myWorkouts}
+            onCreateCustomWorkout={() => { setEditingWorkout(null); setShowBuilder(true); }}
           />
         )}
         {tab === "nourish" && (

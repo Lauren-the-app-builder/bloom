@@ -1,6 +1,6 @@
 // Pure utility functions for the Wren coaching system.
 
-import { load, isDeloadWeek, getDeloadWeeks, isInjuryWeek, getInjuryWeeks, getSkippedSessionsForWeek, getWrenNotes, getCalorieGoal, getCurrentWeight, getWeeklyAvgWeight, getWeeklyAvgSeries, getWeightChange, getWeightLog, getNourishPhase, getCardioSessionsForWeek } from '../../lib/storage';
+import { load, isDeloadWeek, getDeloadWeeks, isInjuryWeek, getInjuryWeeks, getSkippedSessionsForWeek, getWrenNotes, getCalorieGoal, getCurrentWeight, getWeeklyAvgWeight, getWeeklyAvgSeries, getWeightChange, getWeightLog, getNourishPhase, getCardioSessionsForWeek, getOffWeek, weekKeyFor } from '../../lib/storage';
 import { comboKey, comboLabel } from './tokens';
 
 // ---------- Plateau detection ----------
@@ -44,7 +44,7 @@ export function computeWeeklyMissesForProgram(program, sessions, { now = new Dat
   }
 
   const programData = program?.program_json || program || null;
-  const { week: currentWeek, startDate, hasStarted } = getCurrentWeekAndMesocycle(program);
+  const { week: currentWeek, hasStarted, offWeekReason } = getCurrentWeekAndMesocycle(program);
   if (!hasStarted || !programData?.weeks?.length || currentWeek <= 0) {
     return { isCheckDay, scheduledCount: 0, loggedCount: 0, missedCount: 0 };
   }
@@ -56,7 +56,10 @@ export function computeWeeklyMissesForProgram(program, sessions, { now = new Dat
     : (wkData?.sessions ? Object.values(wkData.sessions) : []);
   const scheduledCount = wkSessions.length;
 
-  const weekStart = startDate.getTime() + (currentWeek - 1) * 7 * 86400000;
+  // Derived straight from the current CALENDAR week (not the training week
+  // number) so this stays correct across a pause — a paused calendar week
+  // doesn't shift where the training week's date range sits.
+  const weekStart = new Date(`${weekKeyFor(now)}T00:00:00`).getTime();
   const weekEnd = weekStart + 7 * 86400000;
   const loggedCount = (sessions || []).filter(s =>
     Number(s.finishedAt) >= weekStart &&
@@ -69,13 +72,14 @@ export function computeWeeklyMissesForProgram(program, sessions, { now = new Dat
   // real logged/scheduled counts (so the UI can still show "2 of 3") but zero
   // out missedCount so the Sunday nag, the missed-session banner, and the
   // punishment system all stay quiet. Matches Wren's rule that injury never
-  // counts toward a punishment.
-  const injured = isInjuryWeek(currentWeek);
+  // counts toward a punishment. A calendar off week (injury or vacation)
+  // gets the same treatment.
+  const injured = isInjuryWeek(currentWeek) || !!offWeekReason;
   // Sessions Lauren explicitly skipped this week are intentional, not misses —
   // subtract them from the shortfall so an acknowledged skip doesn't nag.
   const skippedCount = getSkippedSessionsForWeek(currentWeek).length;
   const missedCount = injured ? 0 : Math.max(0, scheduledCount - loggedCount - skippedCount);
-  return { isCheckDay, scheduledCount, loggedCount, skippedCount, missedCount, injured, weekNumber: currentWeek };
+  return { isCheckDay, scheduledCount, loggedCount, skippedCount, missedCount, injured, offWeekReason, weekNumber: currentWeek };
 }
 
 // ---------- Missed session detection (legacy day-based) ----------
@@ -122,17 +126,33 @@ export function computeMissedSessions(schedule, workouts, sessions, lookbackDays
 // TODO: make this user-configurable via settings.
 const PROGRAM_START = new Date('2026-05-25T00:00:00');
 
+// Count of calendar weeks, starting at PROGRAM_START, that have elapsed as of
+// `now` (0 = the starting week itself).
+function calendarWeekIndex(startDate, now) {
+  return Math.max(0, Math.floor((now - startDate) / (7 * 86400000)));
+}
+
 export function getCurrentWeekAndMesocycle(rawProgram) {
   const program = rawProgram?.program_json || rawProgram || null;
-  if (!program?.weeks?.length) {
-    return { week: 0, mesocycle: 0, phase: 'none', isDeload: false, hasStarted: false, startDate: PROGRAM_START };
-  }
   const startDate = PROGRAM_START;
   const now = new Date();
-  const diffMs = now - startDate;
-  // weekIndex 0 = week 1; max at last week of the program.
-  const weekIndex = Math.max(0, Math.floor(diffMs / (7 * 86400000)));
-  const clamped = Math.min(weekIndex, program.weeks.length - 1);
+  const offWeekReason = getOffWeek(weekKeyFor(now));
+  if (!program?.weeks?.length) {
+    return { week: 0, mesocycle: 0, phase: 'none', isDeload: false, hasStarted: false, startDate, offWeekReason };
+  }
+  const calIndex = calendarWeekIndex(startDate, now);
+  // An injury/vacation week is a pure calendar interruption — it doesn't
+  // consume a program.weeks slot. Count only the PRIOR calendar weeks that
+  // weren't marked off; the training week that was current when a pause
+  // began is exactly what's current again once it ends, with no separate
+  // "resume pointer" needed.
+  let pausedBefore = 0;
+  for (let k = 0; k < calIndex; k++) {
+    const wkDate = new Date(startDate.getTime() + k * 7 * 86400000);
+    if (getOffWeek(weekKeyFor(wkDate))) pausedBefore++;
+  }
+  const trainingIndex = calIndex - pausedBefore;
+  const clamped = Math.min(Math.max(0, trainingIndex), program.weeks.length - 1);
   const weekNum = clamped + 1;
   return {
     week: weekNum,
@@ -143,7 +163,18 @@ export function getCurrentWeekAndMesocycle(rawProgram) {
     isDeload: isDeloadWeek(weekNum),
     hasStarted: now >= startDate,
     startDate,
+    // 'injury' | 'vacation' | null — whether THIS calendar week (not the
+    // training week) is marked off. See setOffWeek/getOffWeek in storage.js.
+    offWeekReason,
   };
+}
+
+// Human label for a Monday-anchored week key, e.g. "2026-07-20" -> "Jul 20 – Jul 26".
+export function labelForWeekKey(weekKey) {
+  const start = new Date(`${weekKey}T00:00:00`);
+  const end = new Date(start.getTime() + 6 * 86400000);
+  const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `${fmt(start)} – ${fmt(end)}`;
 }
 
 // ---------- Build enriched context for API calls ----------

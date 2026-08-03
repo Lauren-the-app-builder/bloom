@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, CalendarRange, Zap } from 'lucide-react';
+import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, CalendarRange, Zap, HeartPulse, Palmtree, Plus } from 'lucide-react';
 import { c } from './tokens';
 import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage, getCardioSessionsForWeek, addCardioSession, removeCardioSession, getSkippedSessionsForWeek, removeSkippedSession } from '../../lib/storage';
 import { computeActiveNudge, markTriggerSeen } from './wrenTriggers';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
+import OffWeeksModal from './OffWeeksModal';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -13,7 +14,7 @@ const SESSION_COLORS = {
   C: { gradient: 'linear-gradient(160deg, #FFD3B8 0%, #F4B8D4 50%, #C8B4E8 100%)', shadow: 'rgba(244,184,212,0.35)' },
 };
 
-export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump, onAskWren, onViewProgram, onOpenHistory, onOpenSettings, background = 'sunset' }) {
+export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump, onAskWren, onViewProgram, onOpenHistory, onOpenSettings, background = 'sunset', myWorkouts = [], onCreateCustomWorkout }) {
   // Per-background hero config. Sunset's values are LOCKED — that look is
   // the one the design was tuned for. Lauren shares sunset's size + mask
   // but uses a small vertical offset so her head sits below the date,
@@ -41,9 +42,10 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
   const [cardioNameDraft, setCardioNameDraft] = useState('');
   const [cardioDayDraft, setCardioDayDraft] = useState('');
   void scheduleBump;
+  const [manageWeeksOpen, setManageWeeksOpen] = useState(false);
   const rawProgram = getActiveProgram();
   const program = rawProgram?.program_json || rawProgram || null;
-  const { week: currentWeek, hasStarted, startDate } = getCurrentWeekAndMesocycle(rawProgram);
+  const { week: currentWeek, hasStarted, startDate, offWeekReason } = getCurrentWeekAndMesocycle(rawProgram);
   // Deload is opt-in — only true when Lauren has confirmed the current
   // week as a deload (via Wren). No more automatic week-4/8/12 rule.
   const isDeload = hasStarted && currentWeek > 0 && isDeloadWeek(currentWeek);
@@ -409,12 +411,83 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
         </div>
       )}
 
+      {/* Injury / vacation week — replaces the normal schedule card. No
+          training is expected; the program holds at the current week
+          instead of advancing (see offWeekReason / getCurrentWeekAndMesocycle).
+          Lauren can still log something ad hoc via the custom-workout
+          library, which already recalls her last performance. */}
+      {hasStarted && offWeekReason && (
+        <div style={{
+          borderRadius: 28, padding: 18,
+          background: 'rgba(255,255,255,0.86)',
+          backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+          border: '1px solid rgba(255,255,255,0.7)',
+          boxShadow: '0 12px 32px rgba(180,140,200,0.18)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: '50%',
+              background: offWeekReason === 'injury' ? '#E25A75' : '#7AA5C9',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            }}>
+              {offWeekReason === 'injury'
+                ? <HeartPulse size={17} color="white" />
+                : <Palmtree size={17} color="white" />}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: c.charcoal }}>
+                {offWeekReason === 'injury' ? 'Injury week' : 'Vacation week'}
+              </div>
+              <div style={{ fontSize: 12, color: c.muted, marginTop: 2, lineHeight: 1.45 }}>
+                No training expected — Week {currentWeek} will pick up when this week ends.
+              </div>
+            </div>
+          </div>
+
+          {myWorkouts.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+              {myWorkouts.map((w) => (
+                <button
+                  key={w.id}
+                  onClick={() => onStartWorkout && onStartWorkout(w)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 12px', borderRadius: 16, background: c.white,
+                    border: `1px solid ${c.line}`, cursor: 'pointer', textAlign: 'left',
+                    fontFamily: 'inherit', width: '100%',
+                  }}
+                >
+                  <Play size={13} color={c.rosedeep} style={{ flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: c.charcoal, flex: 1, minWidth: 0 }}>
+                    {w.name}
+                  </span>
+                  <ChevronRight size={14} color={c.muted} />
+                </button>
+              ))}
+            </div>
+          )}
+
+          <button
+            onClick={() => onCreateCustomWorkout && onCreateCustomWorkout()}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              width: '100%', padding: '11px 0', borderRadius: 999, border: 'none', cursor: 'pointer',
+              background: `linear-gradient(135deg, ${c.rosedeep} 0%, ${c.rose} 100%)`,
+              color: 'white', fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+            }}
+          >
+            <Plus size={14} color="white" />
+            Log a custom workout
+          </button>
+        </div>
+      )}
+
       {/* This week's schedule — always visible, editable, marks done sessions.
           Once all of this week's sessions are logged (and next week isn't
           already planned), this same card morphs into a 'Plan next week'
           mode: the title, edit button, and save action all switch over,
           so Lauren never sees a separate prompt. */}
-      {hasStarted && allSessions.length > 0 && (() => {
+      {hasStarted && !offWeekReason && allSessions.length > 0 && (() => {
         const confirmed = isScheduleConfirmedThisWeek();
         const allDone = sessionsThisWeek >= allSessions.length;
         const planningNext = allDone && !isNextWeekScheduleConfirmed();
@@ -1198,6 +1271,16 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                 ? `${sessionsThisWeek} of ${allSessions.length} sessions done this week`
                 : `${sessionsThisWeek} session${sessionsThisWeek === 1 ? '' : 's'} done this week`}
             </div>
+            <button
+              onClick={() => setManageWeeksOpen(true)}
+              style={{
+                marginTop: 10, padding: 0, border: 'none', background: 'transparent',
+                color: c.rosedeep, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                fontFamily: 'inherit', textDecoration: 'underline',
+              }}
+            >
+              Mark injury / vacation week
+            </button>
             {/* Pink gradient progress bar — fills proportional to sessions done. */}
             {allSessions.length > 0 && (
               <div style={{
@@ -1216,6 +1299,7 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
         </div>
       )}
     </div>
+    {manageWeeksOpen && <OffWeeksModal onClose={() => setManageWeeksOpen(false)} />}
     </div>
   );
 }

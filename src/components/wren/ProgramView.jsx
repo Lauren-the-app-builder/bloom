@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { ChevronRight, Sparkles } from 'lucide-react';
+import { ChevronRight, Sparkles, HeartPulse, Palmtree, X } from 'lucide-react';
 import { c, comboLabel } from './tokens';
-import { getActiveProgram, setsForExercise, getSessions, load, isDeloadWeek, isInjuryWeek, isSessionSkipped } from '../../lib/storage';
-import { getCurrentWeekAndMesocycle } from './wrenHelpers';
+import { getActiveProgram, setsForExercise, getSessions, load, isDeloadWeek, isInjuryWeek, isSessionSkipped, getOffWeeks, clearOffWeek } from '../../lib/storage';
+import { getCurrentWeekAndMesocycle, labelForWeekKey } from './wrenHelpers';
 
 const MESO_LABELS = [
   { title: 'Mesocycle 1', subtitle: 'Foundation' },
@@ -68,6 +68,8 @@ export default function ProgramView() {
   const { week: currentWeek, startDate, hasStarted } = getCurrentWeekAndMesocycle(program);
   const [expandedWeek, setExpandedWeek] = useState(null);
   const [collapsedMeso, setCollapsedMeso] = useState({});
+  const [offWeeksBump, setOffWeeksBump] = useState(0);
+  void offWeeksBump;
 
   const unit = load('unit', 'kg');
   const sessionsLog = getSessions().filter(s => !(s.workoutName || '').includes('(past entry)'));
@@ -392,6 +394,49 @@ export default function ProgramView() {
         );
       })}
 
+      {/* Calendar off weeks (injury/vacation) — marked from the home
+          screen, not tied to a specific training-week row above (a paused
+          week is a calendar interruption, not a program week). Purely a
+          log; removing one doesn't retroactively un-pause anything already
+          resolved by the week-progression math. */}
+      {(() => {
+        const offWeeks = Object.entries(getOffWeeks())
+          .sort((a, b) => a[0].localeCompare(b[0]));
+        if (!offWeeks.length) return null;
+        return (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: c.charcoal, padding: '0 2px 8px' }}>
+              Time off
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {offWeeks.map(([weekKey, entry]) => (
+                <div key={weekKey} style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '10px 12px', borderRadius: 12,
+                  background: c.white, border: `1px solid ${c.line}`,
+                }}>
+                  {entry.reason === 'injury'
+                    ? <HeartPulse size={14} color="#E25A75" />
+                    : <Palmtree size={14} color="#7AA5C9" />}
+                  <span style={{ fontSize: 12, fontWeight: 600, color: c.charcoal, flex: 1 }}>
+                    {labelForWeekKey(weekKey)} · {entry.reason === 'injury' ? 'Injury' : 'Vacation'}
+                  </span>
+                  <button
+                    onClick={() => { clearOffWeek(weekKey); setOffWeeksBump(b => b + 1); }}
+                    style={{
+                      width: 26, height: 26, borderRadius: '50%', border: 'none',
+                      background: c.paper, display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', cursor: 'pointer',
+                    }}
+                  >
+                    <X size={12} color={c.muted} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
