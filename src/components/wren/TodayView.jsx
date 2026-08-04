@@ -411,11 +411,13 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
         </div>
       )}
 
-      {/* Injury / vacation week — replaces the normal schedule card. No
-          training is expected; the program holds at the current week
-          instead of advancing (see offWeekReason / getCurrentWeekAndMesocycle).
-          Lauren can still log something ad hoc via the custom-workout
-          library, which already recalls her last performance. */}
+      {/* Injury / vacation week banner — shown ABOVE the normal schedule
+          card, not instead of it. No training is required; the program
+          holds at the current week instead of advancing (see offWeekReason
+          / getCurrentWeekAndMesocycle). Lauren can still schedule/attempt
+          the held week's sessions below if she's up to it, or log something
+          ad hoc via the custom-workout library, which already recalls her
+          last performance. */}
       {hasStarted && offWeekReason && (
         <div style={{
           borderRadius: 28, padding: 18,
@@ -499,12 +501,14 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
         </div>
       )}
 
-      {/* This week's schedule — always visible, editable, marks done sessions.
+      {/* This week's schedule — always visible, editable, marks done sessions,
+          even during an injury/vacation week: no training is REQUIRED then,
+          but Lauren can still plan/attempt sessions if she feels up to it.
           Once all of this week's sessions are logged (and next week isn't
           already planned), this same card morphs into a 'Plan next week'
           mode: the title, edit button, and save action all switch over,
           so Lauren never sees a separate prompt. */}
-      {hasStarted && !offWeekReason && allSessions.length > 0 && (() => {
+      {hasStarted && allSessions.length > 0 && (() => {
         const confirmed = isScheduleConfirmedThisWeek();
         const allDone = sessionsThisWeek >= allSessions.length;
         const planningNext = allDone && !isNextWeekScheduleConfirmed();
