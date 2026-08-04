@@ -327,6 +327,28 @@ export function clearOffWeek(weekKey) {
   return next;
 }
 
+// Which day (if any) Lauren plans to do each saved workout during a given
+// off week. Separate from the recurring A/B/C `scheduled_day` on program
+// sessions — this is ad hoc and scoped to just that one calendar week, so
+// picking "Wednesday" for a workout during one injury week doesn't stick
+// around for every week after. Shape: { [weekKey]: { [workoutId]: day } }
+const OFF_WEEK_WORKOUT_DAYS_KEY = 'offWeekWorkoutDays';
+
+export function getOffWeekWorkoutDays(weekKey) {
+  const all = load(OFF_WEEK_WORKOUT_DAYS_KEY, {});
+  const forWeek = all && typeof all === 'object' ? all[weekKey] : null;
+  return forWeek && typeof forWeek === 'object' ? forWeek : {};
+}
+
+export function setOffWeekWorkoutDay(weekKey, workoutId, day) {
+  if (!weekKey || !workoutId) return;
+  const all = load(OFF_WEEK_WORKOUT_DAYS_KEY, {});
+  const forWeek = { ...(all[weekKey] || {}) };
+  if (day) forWeek[workoutId] = day;
+  else delete forWeek[workoutId];
+  save(OFF_WEEK_WORKOUT_DAYS_KEY, { ...all, [weekKey]: forWeek });
+}
+
 // ---------- Skipped sessions ----------
 // A specific lifting session (A/B/C) Lauren has intentionally skipped for a
 // given program week — e.g. she's injured and dropping Session C this week.

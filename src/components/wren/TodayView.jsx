@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, CalendarRange, Zap, HeartPulse, Palmtree, Plus, Trash2 } from 'lucide-react';
 import { c } from './tokens';
-import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage, getCardioSessionsForWeek, addCardioSession, removeCardioSession, getSkippedSessionsForWeek, removeSkippedSession } from '../../lib/storage';
+import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage, getCardioSessionsForWeek, addCardioSession, removeCardioSession, getSkippedSessionsForWeek, removeSkippedSession, getOffWeekWorkoutDays, setOffWeekWorkoutDay, weekKeyFor } from '../../lib/storage';
 import { computeActiveNudge, markTriggerSeen } from './wrenTriggers';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 import OffWeeksModal from './OffWeeksModal';
@@ -43,6 +43,9 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
   const [cardioDayDraft, setCardioDayDraft] = useState('');
   void scheduleBump;
   const [manageWeeksOpen, setManageWeeksOpen] = useState(false);
+  // Which library workout (if any) has its inline day-picker expanded, in
+  // the injury/vacation banner below.
+  const [dayPickerFor, setDayPickerFor] = useState(null);
   const rawProgram = getActiveProgram();
   const program = rawProgram?.program_json || rawProgram || null;
   const { week: currentWeek, hasStarted, startDate, offWeekReason } = getCurrentWeekAndMesocycle(rawProgram);
@@ -446,45 +449,103 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
             </div>
           </div>
 
-          {myWorkouts.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
-              {myWorkouts.map((w) => (
-                <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <button
-                    onClick={() => onStartWorkout && onStartWorkout(w)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 10,
-                      padding: '10px 12px', borderRadius: 16, background: c.white,
-                      border: `1px solid ${c.line}`, cursor: 'pointer', textAlign: 'left',
-                      fontFamily: 'inherit', width: '100%', flex: 1, minWidth: 0,
-                    }}
-                  >
-                    <Play size={13} color={c.rosedeep} style={{ flexShrink: 0 }} />
-                    <span style={{ fontSize: 13, fontWeight: 600, color: c.charcoal, flex: 1, minWidth: 0 }}>
-                      {w.name}
-                    </span>
-                    <ChevronRight size={14} color={c.muted} />
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (onDeleteWorkout && confirm(`Delete "${w.name}"? This can't be undone.`)) {
-                        onDeleteWorkout(w.id);
-                      }
-                    }}
-                    title="Delete workout"
-                    style={{
-                      width: 36, height: 36, borderRadius: 12, flexShrink: 0,
-                      border: `1px solid ${c.line}`, background: c.white,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <Trash2 size={13} color={c.muted} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+          {myWorkouts.length > 0 && (() => {
+            const offWeekKey = weekKeyFor(new Date());
+            const workoutDays = getOffWeekWorkoutDays(offWeekKey);
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+                {myWorkouts.map((w) => {
+                  const plannedDay = workoutDays[w.id] || '';
+                  const pickerOpenForThis = dayPickerFor === w.id;
+                  return (
+                    <div key={w.id}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <button
+                          onClick={() => onStartWorkout && onStartWorkout(w)}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 10,
+                            padding: '10px 12px', borderRadius: 16, background: c.white,
+                            border: `1px solid ${c.line}`, cursor: 'pointer', textAlign: 'left',
+                            fontFamily: 'inherit', width: '100%', flex: 1, minWidth: 0,
+                          }}
+                        >
+                          <Play size={13} color={c.rosedeep} style={{ flexShrink: 0 }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: c.charcoal }}>
+                              {w.name}
+                            </div>
+                            <div style={{ fontSize: 10.5, color: c.muted, marginTop: 1 }}>
+                              {plannedDay || 'No day picked'}
+                            </div>
+                          </div>
+                          <ChevronRight size={14} color={c.muted} />
+                        </button>
+                        <button
+                          onClick={() => setDayPickerFor(pickerOpenForThis ? null : w.id)}
+                          title="Pick a day for this week"
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
+                            padding: '0 10px', height: 36, borderRadius: 12,
+                            border: `1px solid ${plannedDay ? c.rosedeep : c.line}`,
+                            background: plannedDay ? c.rosedeep : c.white,
+                            color: plannedDay ? 'white' : c.charcoal,
+                            fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                          }}
+                        >
+                          <CalendarDays size={12} color={plannedDay ? 'white' : c.muted} />
+                          {plannedDay ? plannedDay.slice(0, 3) : 'Day'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (onDeleteWorkout && confirm(`Delete "${w.name}"? This can't be undone.`)) {
+                              onDeleteWorkout(w.id);
+                            }
+                          }}
+                          title="Delete workout"
+                          style={{
+                            width: 36, height: 36, borderRadius: 12, flexShrink: 0,
+                            border: `1px solid ${c.line}`, background: c.white,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <Trash2 size={13} color={c.muted} />
+                        </button>
+                      </div>
+                      {pickerOpenForThis && (
+                        <div style={{
+                          display: 'flex', gap: 4, flexWrap: 'wrap',
+                          padding: '8px 4px 2px',
+                        }}>
+                          {WEEKDAYS.map((day) => {
+                            const active = plannedDay === day;
+                            return (
+                              <button
+                                key={day}
+                                onClick={() => {
+                                  setOffWeekWorkoutDay(offWeekKey, w.id, active ? null : day);
+                                  setDayPickerFor(null);
+                                }}
+                                style={{
+                                  padding: '6px 9px', borderRadius: 999, cursor: 'pointer',
+                                  fontFamily: 'inherit', fontSize: 11, fontWeight: 700,
+                                  border: `1px solid ${active ? c.rosedeep : c.line}`,
+                                  background: active ? c.rosedeep : c.white,
+                                  color: active ? 'white' : c.charcoal,
+                                }}
+                              >
+                                {day.slice(0, 3)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           <button
             onClick={() => onCreateCustomWorkout && onCreateCustomWorkout()}
@@ -501,14 +562,15 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
         </div>
       )}
 
-      {/* This week's schedule — always visible, editable, marks done sessions,
-          even during an injury/vacation week: no training is REQUIRED then,
-          but Lauren can still plan/attempt sessions if she feels up to it.
+      {/* This week's schedule — always visible, editable, marks done sessions.
+          Hidden during an injury/vacation week: day-planning for that week
+          happens inline in the off-week card instead (see offWeekReason
+          banner above), against whatever custom workouts Lauren adds there.
           Once all of this week's sessions are logged (and next week isn't
           already planned), this same card morphs into a 'Plan next week'
           mode: the title, edit button, and save action all switch over,
           so Lauren never sees a separate prompt. */}
-      {hasStarted && allSessions.length > 0 && (() => {
+      {hasStarted && !offWeekReason && allSessions.length > 0 && (() => {
         const confirmed = isScheduleConfirmedThisWeek();
         const allDone = sessionsThisWeek >= allSessions.length;
         const planningNext = allDone && !isNextWeekScheduleConfirmed();
