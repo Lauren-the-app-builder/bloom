@@ -34,7 +34,7 @@ function renderContent(text) {
   });
 }
 
-export default function WrenChat({ schedule, myWorkouts, unit, sessionsBump, onStartWorkout, onViewProgram }) {
+export default function WrenChat({ schedule, myWorkouts, setMyWorkouts, unit, sessionsBump, onStartWorkout, onViewProgram }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -209,6 +209,22 @@ DO NOT generate the program yet. Just introduce yourself and ask if she has anyt
           }
           if (action.type === 'add_cardio_session' && action.name && action.day) {
             addCardioSession({ name: action.name, day: action.day });
+          }
+          if (action.type === 'create_custom_workout' && action.name && Array.isArray(action.exercises) && action.exercises.length && setMyWorkouts) {
+            const exerciseSet = new Set(action.exercises);
+            const supersets = Array.isArray(action.supersets)
+              ? action.supersets.filter(g => Array.isArray(g) && g.length >= 2 && g.every(n => exerciseSet.has(n)))
+              : [];
+            setMyWorkouts([...myWorkouts, {
+              id: `c${Date.now()}${Math.random().toString(36).slice(2, 5)}`,
+              name: action.name,
+              exercises: action.exercises,
+              supersets,
+              scene: null,
+              tag: null,
+              targets: {},
+              rests: {},
+            }]);
           }
           if (action.type === 'edit_workout' && action.session_label) {
             editProgramSession({

@@ -6,7 +6,7 @@ import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 import WrenChat from './WrenChat';
 import ProgramView from './ProgramView';
 
-export default function WrenView({ schedule, myWorkouts, unit, allExercises, sessionsBump, onOpenSettings, onStartWorkout, initialView = 'chat' }) {
+export default function WrenView({ schedule, myWorkouts, setMyWorkouts, unit, allExercises, sessionsBump, onOpenSettings, onStartWorkout, initialView = 'chat' }) {
   const [view, setView] = useState(initialView);
   // Sync to the parent's requested view when it changes — lets the Today
   // screen's 'View program' button land directly on the Program tab.
@@ -134,7 +134,7 @@ export default function WrenView({ schedule, myWorkouts, unit, allExercises, ses
         position: 'relative', zIndex: 1,
       }}>
         {view === 'chat' ? (
-          <WrenChat schedule={schedule} myWorkouts={myWorkouts} unit={unit} sessionsBump={sessionsBump} onStartWorkout={onStartWorkout} onViewProgram={() => setView('program')} />
+          <WrenChat schedule={schedule} myWorkouts={myWorkouts} setMyWorkouts={setMyWorkouts} unit={unit} sessionsBump={sessionsBump} onStartWorkout={onStartWorkout} onViewProgram={() => setView('program')} />
         ) : (
           <ProgramView />
         )}

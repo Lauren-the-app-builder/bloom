@@ -539,6 +539,7 @@ export default function BloomApp() {
           <WrenView
             schedule={schedule}
             myWorkouts={myWorkouts}
+            setMyWorkouts={setMyWorkouts}
             unit={unit}
             allExercises={allExercises}
             sessionsBump={sessionsBump}
