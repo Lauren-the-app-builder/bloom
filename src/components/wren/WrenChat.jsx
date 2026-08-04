@@ -210,6 +210,27 @@ DO NOT generate the program yet. Just introduce yourself and ask if she has anyt
           if (action.type === 'add_cardio_session' && action.name && action.day) {
             addCardioSession({ name: action.name, day: action.day });
           }
+          if (action.type === 'rename_workout' && action.name && action.new_name && setMyWorkouts) {
+            setMyWorkouts(myWorkouts.map(w => w.name === action.name ? { ...w, name: action.new_name } : w));
+          }
+          if (action.type === 'reorder_workouts' && Array.isArray(action.order) && action.order.length && setMyWorkouts) {
+            // Reorder by name; anything the model dropped from `order` is
+            // appended at the end in its original relative position, so a
+            // missing/typo'd name can't make a workout vanish from the list.
+            const byName = new Map(myWorkouts.map(w => [w.name, w]));
+            const seen = new Set();
+            const ordered = [];
+            for (const n of action.order) {
+              if (byName.has(n) && !seen.has(n)) {
+                ordered.push(byName.get(n));
+                seen.add(n);
+              }
+            }
+            for (const w of myWorkouts) {
+              if (!seen.has(w.name)) ordered.push(w);
+            }
+            setMyWorkouts(ordered);
+          }
           if (action.type === 'create_custom_workout' && action.name && Array.isArray(action.exercises) && action.exercises.length && setMyWorkouts) {
             const exerciseSet = new Set(action.exercises);
             const supersets = Array.isArray(action.supersets)
