@@ -88,6 +88,7 @@ import {
   Link2,
   Link2Off,
   Bug,
+  Trash2,
   Download,
   Image as ImageIcon,
   Scale,
@@ -393,6 +394,7 @@ export default function BloomApp() {
   const [showRestTimer, setShowRestTimer] = useState(false);
   const [showWrenMemory, setShowWrenMemory] = useState(false);
   const [showBackground, setShowBackground] = useState(false);
+  const [showWorkoutLibrary, setShowWorkoutLibrary] = useState(false);
   // Bug-report modal at app scope so it's reachable from Settings (i.e.
   // outside an active workout). ActiveWorkout keeps its own trigger for the
   // mid/post-workout entry points; both share the same bloom:bugNotes store.
@@ -591,6 +593,7 @@ export default function BloomApp() {
             onExport={() => { setShowSettings(false); setShowExport(true); }}
             onOpenRestTimer={() => { setShowSettings(false); setShowRestTimer(true); }}
             onOpenWrenMemory={() => { setShowSettings(false); setShowWrenMemory(true); }}
+            onOpenWorkoutLibrary={() => { setShowSettings(false); setShowWorkoutLibrary(true); }}
             onOpenBackground={() => { setShowSettings(false); setShowBackground(true); }}
             onOpenBugReport={() => { setShowSettings(false); setShowBugReport(true); }}
             unit={unit}
@@ -611,6 +614,16 @@ export default function BloomApp() {
         {showRestTimer && <RestTimerScreen onBack={() => setShowRestTimer(false)} />}
 
         {showWrenMemory && <WrenMemoryScreen onBack={() => setShowWrenMemory(false)} />}
+
+        {showWorkoutLibrary && (
+          <WorkoutLibraryScreen
+            onBack={() => setShowWorkoutLibrary(false)}
+            myWorkouts={myWorkouts}
+            onCreateNew={() => { setShowWorkoutLibrary(false); setEditingWorkout(null); setShowBuilder(true); }}
+            onPreviewWorkout={(w) => { setShowWorkoutLibrary(false); setActiveWorkout(w); }}
+            onDeleteWorkout={deleteMyWorkout}
+          />
+        )}
 
         {showBackground && (
           <BackgroundScreen
@@ -3685,7 +3698,7 @@ function SettingsRow({ icon: Icon, label, value, onClick, chevron = false, dange
   );
 }
 
-function SettingsModal({ onClose, onExport, onOpenRestTimer, onOpenWrenMemory, onOpenBackground, onOpenBugReport, unit, setUnit, todayBackground = "sunset" }) {
+function SettingsModal({ onClose, onExport, onOpenRestTimer, onOpenWrenMemory, onOpenBackground, onOpenBugReport, onOpenWorkoutLibrary, unit, setUnit, todayBackground = "sunset" }) {
   // Label for the currently-selected background (shown on its row).
   const BG_LABELS = { sunset: "Sunset", lauren: "Lauren" };
 
@@ -3699,6 +3712,9 @@ function SettingsModal({ onClose, onExport, onOpenRestTimer, onOpenWrenMemory, o
 
         {/* Navigational rows — each opens its own page/picker. */}
         <SettingsRow icon={Timer} label="Rest timer" chevron onClick={onOpenRestTimer} />
+        {onOpenWorkoutLibrary && (
+          <SettingsRow icon={Dumbbell} label="Workout library" chevron onClick={onOpenWorkoutLibrary} />
+        )}
         {onOpenBackground && (
           <SettingsRow
             icon={ImageIcon}
@@ -3935,6 +3951,123 @@ function BackgroundScreen({ onBack, value = "sunset", onChange }) {
             </button>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// Every custom workout Lauren has saved (built from scratch, or created via
+// the injury/vacation card) — reachable from Settings so it's not only
+// visible during an off week. Tapping a row hands off to the existing
+// WorkoutPreview (start/edit + last-time recall); deleting reuses the same
+// deleteMyWorkout as the injury/vacation card, so it's removed everywhere.
+function WorkoutLibraryScreen({ onBack, myWorkouts, onCreateNew, onPreviewWorkout, onDeleteWorkout }) {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: c.cream, zIndex: 300,
+      display: "flex", flexDirection: "column",
+      maxWidth: 430, margin: "0 auto",
+    }}>
+      {/* Top bar */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10,
+        padding: "16px 16px 12px",
+        borderBottom: `1px solid ${c.line}`,
+        flexShrink: 0,
+      }}>
+        <button
+          onClick={onBack}
+          style={{
+            width: 32, height: 32, borderRadius: "50%",
+            background: c.white, border: `1px solid ${c.line}`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer", flexShrink: 0,
+          }}
+        >
+          <ChevronRight size={16} color={c.charcoal} style={{ transform: "rotate(180deg)" }} />
+        </button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: c.charcoal, letterSpacing: -0.3 }}>Workout library</div>
+          <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>
+            {myWorkouts.length} saved workout{myWorkouts.length === 1 ? "" : "s"}
+          </div>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div style={{
+        flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch",
+        padding: "16px 16px calc(28px + env(safe-area-inset-bottom)) 16px",
+      }}>
+        <button
+          onClick={onCreateNew}
+          style={{
+            width: "100%", background: "linear-gradient(160deg, #C8B4E8 0%, #F4B8D4 55%, #FFD3B8 100%)",
+            border: "none", borderRadius: 18, padding: 16,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            cursor: "pointer", marginBottom: 16, color: "white", fontWeight: 700, fontSize: 14,
+            fontFamily: "inherit", boxShadow: "0 10px 24px rgba(180,140,200,0.26)",
+          }}
+        >
+          <Plus size={16} /> Build a workout
+        </button>
+
+        {myWorkouts.length === 0 ? (
+          <div style={{
+            background: c.white, border: `1px solid ${c.line}`, borderRadius: 18,
+            padding: 22, fontSize: 13, color: c.muted, lineHeight: 1.55,
+            textAlign: "center",
+          }}>
+            <Dumbbell size={20} color={c.muted} style={{ marginBottom: 8 }} />
+            <div style={{ fontWeight: 600, color: c.charcoal, marginBottom: 4 }}>
+              Nothing saved yet
+            </div>
+            <div>Workouts you build show up here.</div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {myWorkouts.map((w) => (
+              <div key={w.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button
+                  onClick={() => onPreviewWorkout(w)}
+                  style={{
+                    flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10,
+                    padding: "12px 14px", borderRadius: 16, background: c.white,
+                    border: `1px solid ${c.line}`, cursor: "pointer", textAlign: "left",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
+                    <div style={{
+                      fontSize: 14, fontWeight: 700, color: c.charcoal,
+                      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                    }}>
+                      {w.name}
+                    </div>
+                    <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>
+                      {(w.exercises || []).length} exercise{(w.exercises || []).length === 1 ? "" : "s"}
+                    </div>
+                  </div>
+                  <ChevronRight size={14} color={c.muted} style={{ flexShrink: 0 }} />
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm(`Delete "${w.name}"? This can't be undone.`)) onDeleteWorkout(w.id);
+                  }}
+                  title="Delete workout"
+                  style={{
+                    width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+                    border: `1px solid ${c.line}`, background: c.white,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    cursor: "pointer",
+                  }}
+                >
+                  <Trash2 size={14} color={c.muted} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

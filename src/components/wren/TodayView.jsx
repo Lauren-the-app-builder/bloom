@@ -463,22 +463,19 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                         <button
                           onClick={() => onStartWorkout && onStartWorkout(w)}
                           style={{
-                            display: 'flex', alignItems: 'center', gap: 10,
+                            display: 'flex', alignItems: 'center', gap: 8,
                             padding: '10px 12px', borderRadius: 16, background: c.white,
                             border: `1px solid ${c.line}`, cursor: 'pointer', textAlign: 'left',
                             fontFamily: 'inherit', width: '100%', flex: 1, minWidth: 0,
                           }}
                         >
                           <Play size={13} color={c.rosedeep} style={{ flexShrink: 0 }} />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: c.charcoal }}>
-                              {w.name}
-                            </div>
-                            <div style={{ fontSize: 10.5, color: c.muted, marginTop: 1 }}>
-                              {plannedDay || 'No day picked'}
-                            </div>
-                          </div>
-                          <ChevronRight size={14} color={c.muted} />
+                          <span style={{
+                            fontSize: 13, fontWeight: 600, color: c.charcoal, flex: 1, minWidth: 0,
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          }}>
+                            {w.name}
+                          </span>
                         </button>
                         <button
                           onClick={() => setDayPickerFor(pickerOpenForThis ? null : w.id)}
