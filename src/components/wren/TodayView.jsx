@@ -452,11 +452,27 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
           {myWorkouts.length > 0 && (() => {
             const offWeekKey = weekKeyFor(new Date());
             const workoutDays = getOffWeekWorkoutDays(offWeekKey);
+            // Which library workouts have a logged session THIS calendar
+            // week — same "done" idea as the normal Session A/B/C rows,
+            // just keyed by workout name + calendar week instead of
+            // program week, since an off week isn't a program week.
+            const weekStart = new Date(`${offWeekKey}T00:00:00`).getTime();
+            const weekEnd = weekStart + 7 * 86400000;
+            const doneThisOffWeek = new Set(
+              getSessions()
+                .filter(s =>
+                  Number(s.finishedAt) >= weekStart &&
+                  Number(s.finishedAt) < weekEnd &&
+                  !(s.workoutName || '').includes('(past entry)')
+                )
+                .map(s => s.workoutName)
+            );
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
                 {myWorkouts.map((w) => {
                   const plannedDay = workoutDays[w.id] || '';
                   const pickerOpenForThis = dayPickerFor === w.id;
+                  const done = doneThisOffWeek.has(w.name);
                   return (
                     <div key={w.id}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -465,33 +481,71 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                           style={{
                             display: 'flex', alignItems: 'center', gap: 8,
                             padding: '10px 12px', borderRadius: 16, background: c.white,
-                            border: `1px solid ${c.line}`, cursor: 'pointer', textAlign: 'left',
+                            border: `1px solid ${done ? '#2e7d4a33' : c.line}`, cursor: 'pointer', textAlign: 'left',
                             fontFamily: 'inherit', width: '100%', flex: 1, minWidth: 0,
                           }}
                         >
-                          <Play size={13} color={c.rosedeep} style={{ flexShrink: 0 }} />
+                          <Play size={13} color={c.rosedeep} style={{ flexShrink: 0, opacity: done ? 0.4 : 1 }} />
                           <span style={{
-                            fontSize: 13, fontWeight: 600, color: c.charcoal, flex: 1, minWidth: 0,
+                            fontSize: 13, fontWeight: 600, color: done ? c.muted : c.charcoal, flex: 1, minWidth: 0,
                             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                            textDecoration: done ? 'line-through' : 'none',
                           }}>
                             {w.name}
                           </span>
+                          {done && (
+                            <span style={{
+                              fontSize: 9, fontWeight: 700, color: '#2e7d4a', background: '#e6f5ea',
+                              padding: '2px 8px', borderRadius: 999, flexShrink: 0,
+                            }}>
+                              ✓ Done
+                            </span>
+                          )}
                         </button>
-                        <button
-                          onClick={() => setDayPickerFor(pickerOpenForThis ? null : w.id)}
-                          title="Pick a day for this week"
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
-                            padding: '0 10px', height: 36, borderRadius: 12,
-                            border: `1px solid ${plannedDay ? c.rosedeep : c.line}`,
-                            background: plannedDay ? c.rosedeep : c.white,
-                            color: plannedDay ? 'white' : c.charcoal,
-                            fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-                          }}
-                        >
-                          <CalendarDays size={12} color={plannedDay ? 'white' : c.muted} />
-                          {plannedDay ? plannedDay.slice(0, 3) : 'Day'}
-                        </button>
+                        {done ? (
+                          /* Undo — mirrors the normal Session row's circle-check:
+                             removes the most recent matching session this week so
+                             a mis-tap doesn't lock the workout into "done". */
+                          <button
+                            onClick={() => {
+                              const matches = getSessions().filter(s =>
+                                s.workoutName === w.name &&
+                                Number(s.finishedAt) >= weekStart &&
+                                Number(s.finishedAt) < weekEnd &&
+                                !(s.workoutName || '').includes('(past entry)')
+                              );
+                              if (!matches.length) return;
+                              if (!confirm(`Mark "${w.name}" as not done? This removes today's logged session for it.`)) return;
+                              for (const m of matches) deleteSession(m.finishedAt);
+                              setScheduleBump(b => b + 1);
+                            }}
+                            title="Mark as not done"
+                            style={{
+                              width: 36, height: 36, borderRadius: 12, flexShrink: 0,
+                              border: `1px solid ${c.line}`, background: c.white,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Check size={14} color="#2e7d4a" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => setDayPickerFor(pickerOpenForThis ? null : w.id)}
+                            title="Pick a day for this week"
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
+                              padding: '0 10px', height: 36, borderRadius: 12,
+                              border: `1px solid ${plannedDay ? c.rosedeep : c.line}`,
+                              background: plannedDay ? c.rosedeep : c.white,
+                              color: plannedDay ? 'white' : c.charcoal,
+                              fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                            }}
+                          >
+                            <CalendarDays size={12} color={plannedDay ? 'white' : c.muted} />
+                            {plannedDay ? plannedDay.slice(0, 3) : 'Day'}
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             if (onDeleteWorkout && confirm(`Delete "${w.name}"? This can't be undone.`)) {
