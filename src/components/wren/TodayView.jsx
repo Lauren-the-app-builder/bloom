@@ -452,16 +452,18 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
           {myWorkouts.length > 0 && (() => {
             const offWeekKey = weekKeyFor(new Date());
             const workoutDays = getOffWeekWorkoutDays(offWeekKey);
-            // Which library workouts have a logged session TODAY — done
-            // status here resets nightly, not weekly like the normal
-            // Session A/B/C card. During an off week Lauren does these ad
-            // hoc, day by day, so "done" should mean "done today."
-            const dayEnd = todayStart + 86400000;
-            const doneToday = new Set(
+            // Which library workouts have a logged session THIS calendar
+            // week — same weekly reset as the normal Session A/B/C card
+            // (Monday-anchored, so it rolls over Sunday midnight into
+            // Monday), just keyed by workout name + calendar week instead
+            // of program week, since an off week isn't a program week.
+            const weekStart = new Date(`${offWeekKey}T00:00:00`).getTime();
+            const weekEnd = weekStart + 7 * 86400000;
+            const doneThisOffWeek = new Set(
               getSessions()
                 .filter(s =>
-                  Number(s.finishedAt) >= todayStart &&
-                  Number(s.finishedAt) < dayEnd &&
+                  Number(s.finishedAt) >= weekStart &&
+                  Number(s.finishedAt) < weekEnd &&
                   !(s.workoutName || '').includes('(past entry)')
                 )
                 .map(s => s.workoutName)
@@ -471,7 +473,7 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                 {myWorkouts.map((w) => {
                   const plannedDay = workoutDays[w.id] || '';
                   const pickerOpenForThis = dayPickerFor === w.id;
-                  const done = doneToday.has(w.name);
+                  const done = doneThisOffWeek.has(w.name);
                   return (
                     <div key={w.id}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -503,18 +505,19 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                         </button>
                         {done ? (
                           /* Undo — mirrors the normal Session row's circle-check:
-                             removes today's matching session so a mis-tap
-                             doesn't lock the workout into "done". */
+                             removes the most recent matching session this
+                             week so a mis-tap doesn't lock the workout into
+                             "done". */
                           <button
                             onClick={() => {
                               const matches = getSessions().filter(s =>
                                 s.workoutName === w.name &&
-                                Number(s.finishedAt) >= todayStart &&
-                                Number(s.finishedAt) < dayEnd &&
+                                Number(s.finishedAt) >= weekStart &&
+                                Number(s.finishedAt) < weekEnd &&
                                 !(s.workoutName || '').includes('(past entry)')
                               );
                               if (!matches.length) return;
-                              if (!confirm(`Mark "${w.name}" as not done? This removes today's logged session for it.`)) return;
+                              if (!confirm(`Mark "${w.name}" as not done? This removes this week's logged session for it.`)) return;
                               for (const m of matches) deleteSession(m.finishedAt);
                               setScheduleBump(b => b + 1);
                             }}
