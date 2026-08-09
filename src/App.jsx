@@ -3,6 +3,13 @@ import BloomApp from './BloomApp';
 import { isSupabaseConfigured } from './lib/supabase';
 import { pullAll, flushQueue, setSuppressPushes } from './lib/sync';
 
+// A fresh script load NEVER has an active workout yet — ActiveWorkout hasn't
+// mounted. So any 'bloom:workoutInProgress' flag still set from before is
+// stale (e.g. the OS killed the app outright rather than a clean unmount
+// running its cleanup). Clear it here so a leaked flag can't permanently
+// block index.html's deferred-reload check (see ActiveWorkout / index.html).
+try { localStorage.removeItem('bloom:workoutInProgress'); } catch { /* localStorage unavailable in some contexts */ }
+
 // Single-user app — no Supabase auth. The anon key reaches the bloom_*/wren_*
 // tables directly because their RLS is disabled (see migration 003). On boot
 // we pull everything into localStorage, then re-enable pushes and drain the

@@ -1214,6 +1214,15 @@ function WorkoutPreview({ workout, onClose, onStart, onBackfill, onEdit, onExerc
 
 // ---------- ACTIVE WORKOUT (gymshark-style) ----------
 function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerciseNotes = {}, setExerciseNotes = () => {}, allExercises = EXERCISE_DB, myWorkouts, setMyWorkouts }) {
+  // Flag read by index.html's service-worker update handler — a live
+  // workout only exists in memory, so a mid-workout auto-reload (the SW
+  // finding a new deploy and taking over) silently wiped it with nothing
+  // ever written to history. Deferring the reload until this clears fixes
+  // that without needing to persist/rehydrate the whole in-progress state.
+  useEffect(() => {
+    localStorage.setItem("bloom:workoutInProgress", "1");
+    return () => localStorage.removeItem("bloom:workoutInProgress");
+  }, []);
   const [editingNote, setEditingNote] = useState(null); // exercise name
   const [noteDraft, setNoteDraft] = useState("");
   const openNote = (name) => { setEditingNote(name); setNoteDraft(exerciseNotes[name] || ""); };
