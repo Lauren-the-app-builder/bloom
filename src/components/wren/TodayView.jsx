@@ -449,6 +449,98 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
             </div>
           </div>
 
+          {/* Session A / B — shown here (not the hidden weekly schedule card)
+              while a week is marked off. Done status is DAY-scoped, not
+              week-scoped like the normal card: resets every midnight, since
+              during an off week Lauren's doing these ad hoc, day by day, not
+              once-per-training-week. */}
+          {(() => {
+            const abSessions = allSessions.filter(s => ['A', 'B'].includes(String(s.session_label).toUpperCase()));
+            if (!abSessions.length) return null;
+            const todayEnd = todayStart + 86400000;
+            const doneToday = (label) => getSessions().some(s => {
+              const t = Number(s.finishedAt);
+              if (t < todayStart || t >= todayEnd) return false;
+              if ((s.workoutName || '').includes('(past entry)')) return false;
+              const m = /^Session\s+([A-Za-z])/.exec(s.workoutName || '');
+              return !!m && m[1].toUpperCase() === label;
+            });
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+                {abSessions.map((s) => {
+                  const label = String(s.session_label).toUpperCase();
+                  const sc = SESSION_COLORS[label] || SESSION_COLORS.A;
+                  const done = doneToday(label);
+                  return (
+                    <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <button
+                        onClick={() => {
+                          const w = buildWorkoutFromSession(s);
+                          if (w && onStartWorkout) onStartWorkout(w);
+                        }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '10px 12px', borderRadius: 16, background: c.white,
+                          border: `1px solid ${done ? '#2e7d4a33' : c.line}`, cursor: 'pointer', textAlign: 'left',
+                          fontFamily: 'inherit', width: '100%', flex: 1, minWidth: 0,
+                        }}
+                      >
+                        <div style={{
+                          width: 26, height: 26, borderRadius: 8, background: sc.gradient,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: 'white', fontSize: 12, fontWeight: 800, flexShrink: 0,
+                          opacity: done ? 0.5 : 1,
+                        }}>
+                          {label}
+                        </div>
+                        <span style={{
+                          fontSize: 13, fontWeight: 600, color: done ? c.muted : c.charcoal, flex: 1, minWidth: 0,
+                          textDecoration: done ? 'line-through' : 'none',
+                        }}>
+                          Session {label}
+                        </span>
+                        {done && (
+                          <span style={{
+                            fontSize: 9, fontWeight: 700, color: '#2e7d4a', background: '#e6f5ea',
+                            padding: '2px 8px', borderRadius: 999, flexShrink: 0,
+                          }}>
+                            ✓ Done
+                          </span>
+                        )}
+                      </button>
+                      {done && (
+                        <button
+                          onClick={() => {
+                            const matches = getSessions().filter(sess => {
+                              const t = Number(sess.finishedAt);
+                              if (t < todayStart || t >= todayEnd) return false;
+                              if ((sess.workoutName || '').includes('(past entry)')) return false;
+                              const m = /^Session\s+([A-Za-z])/.exec(sess.workoutName || '');
+                              return !!m && m[1].toUpperCase() === label;
+                            });
+                            if (!matches.length) return;
+                            if (!confirm(`Mark Session ${label} as not done for today?`)) return;
+                            for (const m of matches) deleteSession(m.finishedAt);
+                            setScheduleBump(b => b + 1);
+                          }}
+                          title="Mark as not done"
+                          style={{
+                            width: 36, height: 36, borderRadius: 12, flexShrink: 0,
+                            border: `1px solid ${c.line}`, background: c.white,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <Check size={14} color="#2e7d4a" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
           {myWorkouts.length > 0 && (() => {
             const offWeekKey = weekKeyFor(new Date());
             const workoutDays = getOffWeekWorkoutDays(offWeekKey);
