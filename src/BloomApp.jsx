@@ -94,7 +94,7 @@ import {
   Scale,
   Zap,
 } from "lucide-react";
-import { useLocalState, recordSession, getSessions, getLastSession, getBaselineSessions, updateSession, deleteSession, load, save, getActiveProgram, getMissedSessions, ensureSessionAOrder, ensureSessionBPulldown, ensureSessionCLegCurl, getWrenNotes, removeWrenNote, clearWrenNotes } from "./lib/storage";
+import { useLocalState, recordSession, getSessions, getLastSession, getBaselineSessions, updateSession, deleteSession, load, save, getActiveProgram, getMissedSessions, ensureSessionAOrder, ensureSessionBPulldown, ensureSessionCLegCurl, getWrenNotes, removeWrenNote, clearWrenNotes, getWorkoutDraft, saveWorkoutDraft, clearWorkoutDraft } from "./lib/storage";
 import { deleteWorkoutRemote } from "./lib/sync";
 import { subscribeToPush, scheduleRestPush, cancelRestPush } from "./lib/push";
 import WrenView from "./components/wren/WrenView";
@@ -369,7 +369,13 @@ export default function BloomApp() {
   const [showFocusLift, setShowFocusLift] = useState(false);
   const [showWeek, setShowWeek] = useState(false);
   const [activeWorkout, setActiveWorkout] = useState(null); // workout being viewed
-  const [inProgress, setInProgress] = useState(null); // workout currently running
+  // Persisted (not plain useState) so a reload/kill mid-workout still knows
+  // which workout to resume ActiveWorkout into — paired with the sets/timer
+  // draft it rehydrates from (see getWorkoutDraft in ActiveWorkout). Local
+  // only: "inProgressWorkout" isn't in sync.js's KV_KEYS/ENTITY_FOR_KEY, so
+  // it never syncs to Supabase — a stale in-progress workout has no business
+  // following Lauren to another device.
+  const [inProgress, setInProgress] = useLocalState("inProgressWorkout", null); // workout currently running
   const [cardioInProgress, setCardioInProgress] = useState(null); // cardio session being logged
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingWorkout, setEditingWorkout] = useState(null);
@@ -1214,15 +1220,27 @@ function WorkoutPreview({ workout, onClose, onStart, onBackfill, onEdit, onExerc
 
 // ---------- ACTIVE WORKOUT (gymshark-style) ----------
 function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerciseNotes = {}, setExerciseNotes = () => {}, allExercises = EXERCISE_DB, myWorkouts, setMyWorkouts }) {
-  // Flag read by index.html's service-worker update handler — a live
-  // workout only exists in memory, so a mid-workout auto-reload (the SW
-  // finding a new deploy and taking over) silently wiped it with nothing
-  // ever written to history. Deferring the reload until this clears fixes
-  // that without needing to persist/rehydrate the whole in-progress state.
+  // Flag read by index.html's service-worker update handler — see below,
+  // this is the other half of the same protection. Cleared on unmount,
+  // which only ever happens for a genuine Finish/Cancel (a reload or an
+  // OS-killed tab doesn't run React cleanup at all) — so it's also the
+  // right moment to clear the autosave draft below.
   useEffect(() => {
     localStorage.setItem("bloom:workoutInProgress", "1");
-    return () => localStorage.removeItem("bloom:workoutInProgress");
+    return () => {
+      localStorage.removeItem("bloom:workoutInProgress");
+      clearWorkoutDraft();
+    };
   }, []);
+  // Autosave: rehydrate sets/timer/etc. from a draft left by a reload or an
+  // OS-killed tab, instead of losing whatever was already logged. Only
+  // trusted when it's for THIS workout — inProgress is itself persisted now
+  // (see BloomApp's useLocalState for it), so on a real resume the id lines
+  // up; a draft for any other workout is stale and ignored.
+  const [draft] = useState(() => {
+    const d = getWorkoutDraft();
+    return d && d.workoutId === workout.id ? d : null;
+  });
   const [editingNote, setEditingNote] = useState(null); // exercise name
   const [noteDraft, setNoteDraft] = useState("");
   const openNote = (name) => { setEditingNote(name); setNoteDraft(exerciseNotes[name] || ""); };
@@ -1246,7 +1264,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
     return lastSessions[workout.name];
   })();
   const unit = useUnit();
-  const [targets, setTargets] = useState(workout.targets || {});
+  const [targets, setTargets] = useState(draft ? draft.targets : (workout.targets || {}));
   // Persist target changes back to the workout template.
   const updateTarget = (exName, reps) => {
     const next = { ...targets, [exName]: reps };
@@ -1478,10 +1496,10 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
     }
   };
   // Store workout start as absolute timestamp so elapsed survives app backgrounding.
-  const [workoutStartedAt] = useState(() => Date.now());
-  const [elapsed, setElapsed] = useState(0);
+  const [workoutStartedAt] = useState(() => draft?.workoutStartedAt || Date.now());
+  const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - (draft?.workoutStartedAt || Date.now())) / 1000));
   const [sets, setSets] = useState(
-    workout.exercises.map((name) => {
+    draft ? draft.sets : workout.exercises.map((name) => {
       const lastEx = lastExForName(name);
       // Priority: configured sets count > last session's set count > default 3.
       // If the workout came with a setsConfig object (e.g. from a Wren program),
@@ -1547,12 +1565,12 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
   );
   const [showFormTips, setShowFormTips] = useState(null);
   // Live-editable rest times per exercise (overrides workout.rests during this session).
-  const [liveRests, setLiveRests] = useState({ ...(workout.rests || {}) });
+  const [liveRests, setLiveRests] = useState(draft ? draft.liveRests : { ...(workout.rests || {}) });
   // Live superset groups for THIS session. Seeded from the workout's program
   // supersets and mutated by Wren's mid-workout superset / unlink_superset
   // actions. Session-only (like reorder/add_set) — grouping is a display
   // concept and doesn't alter the logged session or the base program.
-  const [liveSupersets, setLiveSupersets] = useState(() => (workout.supersets || []).map(g => [...g]));
+  const [liveSupersets, setLiveSupersets] = useState(() => draft ? draft.liveSupersets : (workout.supersets || []).map(g => [...g]));
   // Group two exercises as a superset for this session — each is first pulled
   // out of any existing group so we never leave an overlapping pairing. Shared
   // by Wren's mid-workout superset action and the manual link button.
@@ -1894,9 +1912,12 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
   const HIIT_DURATION_SEC = 20 * 60;
   const HIIT_COLOR = "#E25A75";       // coral — sits between rose and cardio orange
   const HIIT_COLOR_BG = "#FFE3EA";
-  const [hiitState, setHiitState] = useState("off");
-  const [hiitStartedAt, setHiitStartedAt] = useState(null);
-  const [hiitElapsed, setHiitElapsed] = useState(0);
+  const [hiitState, setHiitState] = useState(draft?.hiitState || "off");
+  const [hiitStartedAt, setHiitStartedAt] = useState(draft?.hiitStartedAt || null);
+  const [hiitElapsed, setHiitElapsed] = useState(() => {
+    const startedAt = draft?.hiitStartedAt;
+    return startedAt ? Math.floor((Date.now() - startedAt) / 1000) : 0;
+  });
   useEffect(() => {
     if (hiitState !== "active" || !hiitStartedAt) return;
     const t = setInterval(() => {
@@ -1904,6 +1925,19 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
     }, 1000);
     return () => clearInterval(t);
   }, [hiitState, hiitStartedAt]);
+  // Autosave — writes the draft this component (and index.html's SW handler)
+  // reads back on a resume. Fires on every relevant change; a synchronous
+  // localStorage write of one workout's worth of data is cheap enough not to
+  // need debouncing.
+  useEffect(() => {
+    saveWorkoutDraft({
+      workoutId: workout.id,
+      workoutName: workout.name,
+      sets, targets, liveRests, liveSupersets,
+      workoutStartedAt, hiitState, hiitStartedAt,
+      savedAt: Date.now(),
+    });
+  }, [sets, targets, liveRests, liveSupersets, workoutStartedAt, hiitState, hiitStartedAt, workout.id, workout.name]);
   const startHiit = () => {
     setHiitStartedAt(Date.now());
     setHiitElapsed(0);

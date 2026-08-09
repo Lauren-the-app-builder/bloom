@@ -126,6 +126,33 @@ export function deleteSession(finishedAt) {
   return next;
 }
 
+// ---------- Active workout draft (autosave) ----------
+// Local-only — deliberately NOT wired into the Supabase sync queue (short-
+// lived, device-specific, and syncing it risks a stale draft on one device
+// clobbering real progress on another). Exists to protect an in-progress
+// workout against exactly what used to wipe one silently: a forced reload
+// (service-worker update) or the OS killing a backgrounded tab. ActiveWorkout
+// saves on every meaningful change and clears on Finish or Cancel (its
+// unmount cleanup) — never on an unannounced reload/kill, since those don't
+// run React cleanup at all, which is exactly when the draft needs to survive.
+const WORKOUT_DRAFT_KEY = PREFIX + 'workoutDraft';
+
+export function getWorkoutDraft() {
+  try {
+    const raw = localStorage.getItem(WORKOUT_DRAFT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+
+export function saveWorkoutDraft(draft) {
+  try { localStorage.setItem(WORKOUT_DRAFT_KEY, JSON.stringify(draft)); } catch { /* localStorage unavailable in some contexts */ }
+}
+
+export function clearWorkoutDraft() {
+  try { localStorage.removeItem(WORKOUT_DRAFT_KEY); } catch { /* localStorage unavailable in some contexts */ }
+}
+
 // ---------- Wren chat ----------
 export function getWrenMessages() {
   return load('wrenChat', []).sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
