@@ -80,6 +80,16 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
     const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime();
   })();
 
+  // Start of the CURRENT calendar week (Monday-anchored), used everywhere
+  // below that means "sessions done this week." NOT derived from currentWeek
+  // (the training week number) — once weeks can be paused, a training week
+  // can span many calendar weeks (see getCurrentWeekAndMesocycle), so
+  // startDate + (currentWeek-1)*7days no longer points at the right date and
+  // silently counts sessions from a much earlier calendar week as "this
+  // week." This is always correct, paused or not: with no pauses the two
+  // were equivalent anyway.
+  const thisCalendarWeekStart = new Date(`${weekKeyFor(new Date())}T00:00:00`).getTime();
+
   void sessionsBump;
   const doneToday = !!todaySession && getSessions().some(s =>
     Number(s.finishedAt) >= todayStart &&
@@ -144,7 +154,7 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
   // (sessionsBump above forces a re-render after a workout completes.)
   const sessionsThisWeek = (() => {
     if (!startDate || !hasStarted) return 0;
-    const weekStart = startDate.getTime() + (currentWeek - 1) * 7 * 86400000;
+    const weekStart = thisCalendarWeekStart;
     const labels = new Set();
     for (const s of getSessions()) {
       if (Number(s.finishedAt) < weekStart) continue;
@@ -192,7 +202,7 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
   const doneLabels = (() => {
     const set = new Set();
     if (!startDate || !hasStarted) return set;
-    const weekStart = startDate.getTime() + (currentWeek - 1) * 7 * 86400000;
+    const weekStart = thisCalendarWeekStart;
     for (const s of getSessions()) {
       if (Number(s.finishedAt) < weekStart) continue;
       if ((s.workoutName || '').includes('(past entry)')) continue;
@@ -206,7 +216,7 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
   const hiitLabels = (() => {
     const set = new Set();
     if (!startDate || !hasStarted) return set;
-    const weekStart = startDate.getTime() + (currentWeek - 1) * 7 * 86400000;
+    const weekStart = thisCalendarWeekStart;
     for (const s of getSessions()) {
       if (Number(s.finishedAt) < weekStart) continue;
       if ((s.workoutName || '').includes('(past entry)')) continue;
@@ -782,7 +792,7 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                             onClick={(e) => {
                               e.stopPropagation();
                               if (!startDate) return;
-                              const weekStart = startDate.getTime() + (currentWeek - 1) * 7 * 86400000;
+                              const weekStart = thisCalendarWeekStart;
                               const weekEnd = weekStart + 7 * 86400000;
                               const matches = getSessions().filter(sess => {
                                 const t = Number(sess.finishedAt);
