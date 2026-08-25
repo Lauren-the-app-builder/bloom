@@ -160,8 +160,30 @@ export default function ProgramDetailView({ programId, initialTab = 'plan', onBa
   };
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: c.cream }}>
-      <div style={{ padding: '18px 16px 10px', flexShrink: 0 }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: '#FAF7F8', position: 'relative' }}>
+      {/* Same sunset backdrop the Program page used to carry, behind a soft
+          white wash so the opaque cards stay fully legible. */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute', inset: 0,
+          backgroundImage: 'url(/sunset.png)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'top center',
+          pointerEvents: 'none',
+          zIndex: 0,
+        }}
+      />
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute', inset: 0,
+          background: 'rgba(255,255,255,0.55)',
+          pointerEvents: 'none',
+          zIndex: 0,
+        }}
+      />
+      <div style={{ padding: '18px 16px 10px', flexShrink: 0, position: 'relative', zIndex: 1 }}>
         <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: c.muted, fontSize: 12, fontWeight: 600, padding: 0, marginBottom: 10 }}>
           <ChevronLeft size={16} /> Programs
         </button>
@@ -271,7 +293,7 @@ export default function ProgramDetailView({ programId, initialTab = 'plan', onBa
         </div>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', zIndex: 1 }}>
         {tab === 'plan' ? (
           <ProgramView programId={programId} allExercises={allExercises} />
         ) : (

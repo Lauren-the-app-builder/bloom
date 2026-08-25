@@ -244,10 +244,34 @@ export default function ProgramsView({ initialProgramId = null, onOpenHistory, a
   const openProgram = (id, tab = 'plan') => { setSelectedInitialTab(tab); setSelectedId(id); };
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: c.cream }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: '#FAF7F8', position: 'relative' }}>
+      {/* Same sunset backdrop the Program page used to carry — sits behind
+          everything with a soft white wash so the opaque cards below stay
+          fully legible. */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute', inset: 0,
+          backgroundImage: 'url(/sunset.png)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'top center',
+          pointerEvents: 'none',
+          zIndex: 0,
+        }}
+      />
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute', inset: 0,
+          background: 'rgba(255,255,255,0.55)',
+          pointerEvents: 'none',
+          zIndex: 0,
+        }}
+      />
+
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '18px 16px 12px', flexShrink: 0,
+        padding: '18px 16px 12px', flexShrink: 0, position: 'relative', zIndex: 1,
       }}>
         <div style={{ fontSize: 18, fontWeight: 800, color: c.charcoal }}>Programs</div>
         <button
@@ -262,7 +286,7 @@ export default function ProgramsView({ initialProgramId = null, onOpenHistory, a
         </button>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 24px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 24px', position: 'relative', zIndex: 1 }}>
         {active.length === 0 && (
           <div style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center',
