@@ -126,7 +126,7 @@ function collectLabels(program) {
   return labels;
 }
 
-export default function ProgramDetailView({ programId, initialTab = 'plan', onBack, onOpenHistory, onProgramChanged }) {
+export default function ProgramDetailView({ programId, initialTab = 'plan', onBack, onOpenHistory, allExercises = [], onProgramChanged }) {
   const [tab, setTab] = useState(initialTab);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
@@ -252,7 +252,7 @@ export default function ProgramDetailView({ programId, initialTab = 'plan', onBa
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {tab === 'plan' ? (
-          <ProgramView programId={programId} />
+          <ProgramView programId={programId} allExercises={allExercises} />
         ) : (
           <ProgramChat programId={programId} onProgramChanged={refresh} />
         )}

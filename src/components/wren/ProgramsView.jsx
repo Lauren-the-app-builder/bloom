@@ -214,7 +214,7 @@ function RenameSheet({ program, onClose, onRenamed }) {
   );
 }
 
-export default function ProgramsView({ initialProgramId = null, onOpenHistory }) {
+export default function ProgramsView({ initialProgramId = null, onOpenHistory, allExercises = [] }) {
   const [selectedId, setSelectedId] = useState(initialProgramId);
   const [selectedInitialTab, setSelectedInitialTab] = useState('plan');
   const [showArchived, setShowArchived] = useState(false);
@@ -231,6 +231,7 @@ export default function ProgramsView({ initialProgramId = null, onOpenHistory })
         initialTab={selectedInitialTab}
         onBack={() => { setSelectedId(null); refresh(); }}
         onOpenHistory={onOpenHistory}
+        allExercises={allExercises}
         onProgramChanged={refresh}
       />
     );
