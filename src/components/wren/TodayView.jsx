@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, CalendarRange, Zap, HeartPulse, Palmtree, Plus, Trash2, X } from 'lucide-react';
+import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, ChevronLeft, CalendarRange, Zap, HeartPulse, Palmtree, Plus, Trash2, X } from 'lucide-react';
 import { c, SESSION_COLORS } from './tokens';
 import { getActiveProgram, getSessions, recordSession, setsForExercise, getRestOverride, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage, getCardioSessionsForWeek, addCardioSession, removeCardioSession, getSkippedSessionsForWeek, removeSkippedSession, getOffWeekWorkoutDays, setOffWeekWorkoutDay, weekKeyFor } from '../../lib/storage';
 import { computeActiveNudge, markTriggerSeen } from './wrenTriggers';
-import { getCurrentWeekAndMesocycle } from './wrenHelpers';
+import { getCurrentWeekAndMesocycle, labelForWeekKey } from './wrenHelpers';
 import OffWeeksModal from './OffWeeksModal';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -41,6 +41,7 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
   const [loggingCardio, setLoggingCardio] = useState(false);
   const [cardioQuickName, setCardioQuickName] = useState('');
   const [justLoggedCardio, setJustLoggedCardio] = useState(false);
+  const [showCardioHistory, setShowCardioHistory] = useState(false);
   void scheduleBump;
   const [manageWeeksOpen, setManageWeeksOpen] = useState(false);
   // Which library workout (if any) has its inline day-picker expanded, in
@@ -1226,13 +1227,17 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
             name: (/^Cardio:\s*(.+)$/i.exec(s.workoutName || '')?.[1] || 'Session').trim(),
           }));
         const cardioDoneCount = cardioLoggedThisWeek.length;
-        const goal = 3;
+        const goal = 2;
+        // Always shows at least `goal` pips, but grows past it if she logs
+        // more — extra sessions still earn a visible check instead of
+        // capping out at the goal.
+        const pipCount = Math.max(goal, cardioDoneCount);
         const message = justLoggedCardio
           ? 'Nice work! 🎉'
-          : cardioDoneCount === 0 ? 'Low-impact cardio, 2-3x a week'
+          : cardioDoneCount === 0 ? 'Low-impact cardio, 2x a week'
           : cardioDoneCount === 1 ? 'One down — nice start'
-          : cardioDoneCount === 2 ? 'Almost there this week'
-          : "Goal hit — you're doing great 🎉";
+          : cardioDoneCount === goal ? "Goal hit — you're doing great 🎉"
+          : 'Crushing it this week! 🎉';
 
         const logCardio = () => {
           const trimmed = cardioQuickName.trim();
@@ -1257,7 +1262,14 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
             border: '1px solid rgba(255,255,255,0.7)',
             boxShadow: '0 8px 24px rgba(180,140,200,0.14)',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: loggingCardio ? 12 : 0 }}>
+            <button
+              onClick={() => setShowCardioHistory(true)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                marginBottom: loggingCardio ? 12 : 0, background: 'none', border: 'none',
+                padding: 0, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+              }}
+            >
               <div style={{
                 width: 34, height: 34, borderRadius: '50%', background: '#FFEEE0',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
@@ -1275,7 +1287,7 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                {Array.from({ length: goal }).map((_, i) => (
+                {Array.from({ length: pipCount }).map((_, i) => (
                   <div
                     key={i}
                     style={{
@@ -1290,7 +1302,7 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                   </div>
                 ))}
               </div>
-            </div>
+            </button>
 
             {cardioLoggedThisWeek.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 12 }}>
@@ -1607,6 +1619,76 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
       )}
     </div>
     {manageWeeksOpen && <OffWeeksModal onClose={() => setManageWeeksOpen(false)} />}
+    {showCardioHistory && <CardioHistoryView onClose={() => setShowCardioHistory(false)} />}
+    </div>
+  );
+}
+
+// Every logged cardio session ("Cardio: <name>"), grouped by Monday-anchored
+// calendar week, newest week first — answers "what did I actually do, week
+// by week" when tapping into the Home cardio card.
+function CardioHistoryView({ onClose }) {
+  const weeks = (() => {
+    const byWeek = new Map();
+    for (const s of getSessions()) {
+      const m = /^Cardio:\s*(.+)$/i.exec(s.workoutName || '');
+      if (!m || !s.finishedAt) continue;
+      const weekKey = weekKeyFor(new Date(Number(s.finishedAt)));
+      if (!byWeek.has(weekKey)) byWeek.set(weekKey, []);
+      byWeek.get(weekKey).push({ name: m[1].trim(), finishedAt: s.finishedAt });
+    }
+    return [...byWeek.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([weekKey, sessions]) => ({
+        weekKey,
+        sessions: sessions.sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0)),
+      }));
+  })();
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: c.cream, zIndex: 100, overflowY: 'auto', maxWidth: 430, margin: '0 auto' }}>
+      <div style={{
+        position: 'sticky', top: 0, background: c.cream, borderBottom: `1px solid ${c.line}`,
+        padding: '20px 20px 14px', display: 'flex', alignItems: 'center', gap: 10, zIndex: 5,
+      }}>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: c.charcoal, fontSize: 14, fontWeight: 500, padding: 0 }}>
+          <ChevronLeft size={20} /> Back
+        </button>
+        <div style={{ fontSize: 15, fontWeight: 700, color: c.charcoal, flex: 1 }}>Cardio history</div>
+      </div>
+
+      <div style={{ padding: '16px 20px 32px' }}>
+        {weeks.length === 0 && (
+          <div style={{ fontSize: 13, color: c.muted, textAlign: 'center', marginTop: 40 }}>
+            No cardio logged yet.
+          </div>
+        )}
+        {weeks.map(wk => (
+          <div key={wk.weekKey} style={{
+            marginBottom: 12, background: c.white, border: `1px solid ${c.line}`,
+            borderRadius: 16, padding: '12px 14px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: c.charcoal }}>{labelForWeekKey(wk.weekKey)}</div>
+              <div style={{ display: 'flex', gap: 3 }}>
+                {wk.sessions.map((_, i) => (
+                  <div key={i} style={{
+                    width: 16, height: 16, borderRadius: '50%', background: '#4a8a5a',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Check size={9} color="white" strokeWidth={3} />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {wk.sessions.map((s, i) => (
+                <div key={i} style={{ fontSize: 12, color: c.muted }}>{s.name}</div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
