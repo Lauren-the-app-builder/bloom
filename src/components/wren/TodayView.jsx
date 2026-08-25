@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, CalendarRange, Zap, HeartPulse, Palmtree, Plus, Trash2 } from 'lucide-react';
+import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, CalendarRange, Zap, HeartPulse, Palmtree, Plus, Trash2, X } from 'lucide-react';
 import { c, SESSION_COLORS } from './tokens';
-import { getActiveProgram, getSessions, setsForExercise, getRestOverride, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage, getCardioSessionsForWeek, addCardioSession, removeCardioSession, getSkippedSessionsForWeek, removeSkippedSession, getOffWeekWorkoutDays, setOffWeekWorkoutDay, weekKeyFor } from '../../lib/storage';
+import { getActiveProgram, getSessions, recordSession, setsForExercise, getRestOverride, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage, getCardioSessionsForWeek, addCardioSession, removeCardioSession, getSkippedSessionsForWeek, removeSkippedSession, getOffWeekWorkoutDays, setOffWeekWorkoutDay, weekKeyFor } from '../../lib/storage';
 import { computeActiveNudge, markTriggerSeen } from './wrenTriggers';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 import OffWeeksModal from './OffWeeksModal';
@@ -35,6 +35,12 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
   const [addingCardio, setAddingCardio] = useState(false);
   const [cardioNameDraft, setCardioNameDraft] = useState('');
   const [cardioDayDraft, setCardioDayDraft] = useState('');
+  // Cardio *progress* card (below the week card) — logging a session
+  // already done, separate from the day-picker's "plan cardio for X day"
+  // flow above. justLoggedCardio drives a brief celebratory state.
+  const [loggingCardio, setLoggingCardio] = useState(false);
+  const [cardioQuickName, setCardioQuickName] = useState('');
+  const [justLoggedCardio, setJustLoggedCardio] = useState(false);
   void scheduleBump;
   const [manageWeeksOpen, setManageWeeksOpen] = useState(false);
   // Which library workout (if any) has its inline day-picker expanded, in
@@ -1200,6 +1206,131 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                     Cancel
                   </button>
                 </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Cardio progress card — logging a session already done (toward a
+          2-3x/week low-impact goal), distinct from the "Cardio this week"
+          day-picker above (that's for planning which day; this just marks
+          one done right now). Writes a real logged session via
+          recordSession so it shows up in history like anything else. */}
+      {hasStarted && !offWeekReason && (() => {
+        const cardioDoneCount = getSessions().filter(s =>
+          Number(s.finishedAt) >= thisCalendarWeekStart &&
+          /^Cardio:/i.test(s.workoutName || '')
+        ).length;
+        const goal = 3;
+        const message = justLoggedCardio
+          ? 'Nice work! 🎉'
+          : cardioDoneCount === 0 ? 'Low-impact cardio, 2-3x a week'
+          : cardioDoneCount === 1 ? 'One down — nice start'
+          : cardioDoneCount === 2 ? 'Almost there this week'
+          : "Goal hit — you're doing great 🎉";
+
+        const logCardio = () => {
+          const trimmed = cardioQuickName.trim();
+          recordSession({
+            workoutName: `Cardio: ${trimmed || 'Session'}`,
+            exercises: {},
+            durationSec: 0,
+            finishedAt: Date.now(),
+          });
+          setCardioQuickName('');
+          setLoggingCardio(false);
+          setScheduleBump((b) => b + 1);
+          setJustLoggedCardio(true);
+          setTimeout(() => setJustLoggedCardio(false), 2200);
+        };
+
+        return (
+          <div style={{
+            borderRadius: 24, padding: 16,
+            background: 'rgba(255,255,255,0.86)',
+            backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255,255,255,0.7)',
+            boxShadow: '0 8px 24px rgba(180,140,200,0.14)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: loggingCardio ? 12 : 0 }}>
+              <div style={{
+                width: 34, height: 34, borderRadius: '50%', background: '#FFEEE0',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                <HeartPulse size={16} color="#E28A4A" />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: c.charcoal }}>Cardio</div>
+                <div style={{
+                  fontSize: 12, marginTop: 2, fontWeight: justLoggedCardio ? 700 : 400,
+                  color: justLoggedCardio ? '#2e7d4a' : c.muted,
+                  transition: 'color 0.2s ease',
+                }}>
+                  {message}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                {Array.from({ length: goal }).map((_, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      width: 22, height: 22, borderRadius: '50%',
+                      background: i < cardioDoneCount ? '#4a8a5a' : c.line,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      transition: 'background 0.2s ease, transform 0.2s ease',
+                      transform: justLoggedCardio && i === cardioDoneCount - 1 ? 'scale(1.15)' : 'scale(1)',
+                    }}
+                  >
+                    {i < cardioDoneCount && <Check size={12} color="white" strokeWidth={3} />}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {!loggingCardio ? (
+              <button
+                onClick={() => setLoggingCardio(true)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  width: '100%', padding: '10px 0', borderRadius: 999, border: `1px solid ${c.line}`,
+                  background: c.white, color: c.rosedeep, fontSize: 13, fontWeight: 700,
+                  cursor: 'pointer', fontFamily: 'inherit', marginTop: 12,
+                }}
+              >
+                <Plus size={14} /> Log a cardio session
+              </button>
+            ) : (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  autoFocus
+                  value={cardioQuickName}
+                  onChange={(e) => setCardioQuickName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') logCardio(); }}
+                  placeholder="e.g. Walk, Spin, Swim (optional)"
+                  style={{
+                    flex: 1, padding: '10px 12px', borderRadius: 12, border: `1px solid ${c.line}`,
+                    fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', background: c.white,
+                  }}
+                />
+                <button
+                  onClick={logCardio}
+                  style={{
+                    width: 38, height: 38, borderRadius: '50%', border: 'none', cursor: 'pointer',
+                    background: '#4a8a5a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  }}
+                >
+                  <Check size={16} color="white" strokeWidth={3} />
+                </button>
+                <button
+                  onClick={() => { setLoggingCardio(false); setCardioQuickName(''); }}
+                  style={{
+                    width: 38, height: 38, borderRadius: '50%', border: `1px solid ${c.line}`, cursor: 'pointer',
+                    background: c.white, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  }}
+                >
+                  <X size={15} color={c.muted} />
+                </button>
               </div>
             )}
           </div>
