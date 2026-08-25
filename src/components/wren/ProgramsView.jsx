@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, ChevronRight, Copy, Pencil, Archive, ArchiveRestore, Sparkles, X, ListChecks } from 'lucide-react';
 import { c } from './tokens';
-import { getPrograms, createProgram, duplicateProgram, renameProgram, archiveProgram, unarchiveProgram } from '../../lib/storage';
+import { getPrograms, createProgram, duplicateProgram, renameProgram, archiveProgram, unarchiveProgram, setsForExercise } from '../../lib/storage';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 import ProgramDetailView from './ProgramDetailView';
 
@@ -16,17 +16,21 @@ function ProgramSubtitle({ program }) {
   return <span>{week} week{week === 1 ? '' : 's'} in</span>;
 }
 
-// Session count/labels ("3 days · A, B, C"), read the same way ProgramView
-// does — every week is kept structurally identical, so week 1 stands in
-// for the whole program.
+// "3 days · 42 sets" — day count plus the total effective set count across
+// every exercise in every session (respecting Wren/manual sets overrides,
+// same setsForExercise used on the program's own edit page), so this
+// updates automatically the moment a set count changes there. Read from
+// week 1 only — every week is kept structurally identical.
 function ProgramDayLabels({ program }) {
   const week = program?.program_json?.weeks?.[0];
   if (!week?.sessions) return null;
-  const labels = Array.isArray(week.sessions)
-    ? week.sessions.map((s, i) => s.session_label || s.label || String.fromCharCode(65 + i))
-    : Object.keys(week.sessions);
-  if (!labels.length) return null;
-  return <span>{labels.length} day{labels.length === 1 ? '' : 's'} · {labels.join(', ')}</span>;
+  const sessions = Array.isArray(week.sessions) ? week.sessions : Object.values(week.sessions);
+  if (!sessions.length) return null;
+  const totalSets = sessions.reduce((sum, sess) => {
+    const exercises = sess?.exercises || [];
+    return sum + exercises.reduce((n, ex) => n + setsForExercise(ex.name, false), 0);
+  }, 0);
+  return <span>{sessions.length} day{sessions.length === 1 ? '' : 's'} · {totalSets} sets</span>;
 }
 
 function ProgramRow({ program, onOpen, onDuplicate, onRename, onArchive, onUnarchive }) {
