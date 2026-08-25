@@ -1,18 +1,12 @@
 import React, { useState } from 'react';
 import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, CalendarRange, Zap, HeartPulse, Palmtree, Plus, Trash2 } from 'lucide-react';
-import { c } from './tokens';
+import { c, SESSION_COLORS } from './tokens';
 import { getActiveProgram, getSessions, setsForExercise, getRestOverride, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage, getCardioSessionsForWeek, addCardioSession, removeCardioSession, getSkippedSessionsForWeek, removeSkippedSession, getOffWeekWorkoutDays, setOffWeekWorkoutDay, weekKeyFor } from '../../lib/storage';
 import { computeActiveNudge, markTriggerSeen } from './wrenTriggers';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 import OffWeeksModal from './OffWeeksModal';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-
-const SESSION_COLORS = {
-  A: { gradient: 'linear-gradient(160deg, #C8B4E8 0%, #F4B8D4 50%, #FFD3B8 100%)', shadow: 'rgba(200,180,232,0.35)' },
-  B: { gradient: 'linear-gradient(160deg, #B4D4F0 0%, #C8B4E8 50%, #F4B8D4 100%)', shadow: 'rgba(180,212,240,0.35)' },
-  C: { gradient: 'linear-gradient(160deg, #FFD3B8 0%, #F4B8D4 50%, #C8B4E8 100%)', shadow: 'rgba(244,184,212,0.35)' },
-};
 
 export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump, onAskWren, onViewProgram, onOpenHistory, onOpenSettings, background = 'sunset', myWorkouts = [], onCreateCustomWorkout, onDeleteWorkout }) {
   // Per-background hero config. Sunset's values are LOCKED — that look is

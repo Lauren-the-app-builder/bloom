@@ -24,6 +24,15 @@ export const wren = {
   punishText: "#ba7517",
 };
 
+// Per-session accent (A/B/C/…) shared by TodayView and ProgramView so a
+// session reads as the same color wherever it shows up. Falls back to A's
+// palette for any label beyond C.
+export const SESSION_COLORS = {
+  A: { gradient: 'linear-gradient(160deg, #C8B4E8 0%, #F4B8D4 50%, #FFD3B8 100%)', shadow: 'rgba(200,180,232,0.35)' },
+  B: { gradient: 'linear-gradient(160deg, #B4D4F0 0%, #C8B4E8 50%, #F4B8D4 100%)', shadow: 'rgba(180,212,240,0.35)' },
+  C: { gradient: 'linear-gradient(160deg, #FFD3B8 0%, #F4B8D4 50%, #C8B4E8 100%)', shadow: 'rgba(244,184,212,0.35)' },
+};
+
 // Legacy single-band options — kept so older logged sets render with their
 // original labels. New sets use BAND_COLORS below.
 export const BANDS = [
