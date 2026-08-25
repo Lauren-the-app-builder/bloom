@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, Pencil, X, Plus, Trash2, ChevronRight, Link2, Search } from 'lucide-react';
+import { Sparkles, Pencil, X, Plus, Trash2, ChevronRight, ChevronUp, ChevronDown, Link2, Search } from 'lucide-react';
 import { c, SESSION_COLORS } from './tokens';
 import {
   getActiveProgram, getProgram, setsForExercise, getRestOverride, setRestOverride, clearRestOverride,
@@ -45,6 +45,36 @@ function groupExercises(exercises) {
     }
   });
   return groups;
+}
+
+// Up/down stepper for reordering — plain buttons (not icon-only toggles)
+// since there's no drag-and-drop library in this app; simple and reliable
+// on touch. Grayed out and inert at either end of the list.
+function MoveButtons({ onUp, onDown, canUp, canDown }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+      <button
+        onClick={onUp}
+        disabled={!canUp}
+        style={{
+          width: 18, height: 15, border: 'none', background: 'none', padding: 0,
+          cursor: canUp ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        <ChevronUp size={12} color={canUp ? c.muted : c.line} />
+      </button>
+      <button
+        onClick={onDown}
+        disabled={!canDown}
+        style={{
+          width: 18, height: 15, border: 'none', background: 'none', padding: 0,
+          cursor: canDown ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        <ChevronDown size={12} color={canDown ? c.muted : c.line} />
+      </button>
+    </div>
+  );
 }
 
 function FieldLabel({ children }) {
@@ -155,7 +185,7 @@ function ExercisePickerSheet({ allExercises, initialQuery = '', title = 'Choose 
 // is a standalone override (see getRestOverride/setRestOverride in
 // storage.js) — same idea as sets, but with no "canonical" pattern to fall
 // back to, so it's blank until set.
-function ExerciseRow({ programId, sessionLabel, exercise, allExercises, isFirst, partnerName, availablePartners, onLink, onUnlink, onChanged }) {
+function ExerciseRow({ programId, sessionLabel, exercise, allExercises, isFirst, partnerName, availablePartners, onLink, onUnlink, onChanged, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
   const [expanded, setExpanded] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [linking, setLinking] = useState(false);
@@ -200,25 +230,28 @@ function ExerciseRow({ programId, sessionLabel, exercise, allExercises, isFirst,
 
   return (
     <div style={{ borderTop: isFirst ? 'none' : `1px solid ${c.line}` }}>
-      <button
-        onClick={() => setExpanded(v => !v)}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-          padding: '10px 2px', background: 'none', border: 'none', cursor: 'pointer',
-          textAlign: 'left', fontFamily: 'inherit',
-        }}
-      >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: c.charcoal, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {exercise.name}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        {(onMoveUp || onMoveDown) && <MoveButtons onUp={onMoveUp} onDown={onMoveDown} canUp={canMoveUp} canDown={canMoveDown} />}
+        <button
+          onClick={() => setExpanded(v => !v)}
+          style={{
+            flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8,
+            padding: '10px 2px', background: 'none', border: 'none', cursor: 'pointer',
+            textAlign: 'left', fontFamily: 'inherit',
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: c.charcoal, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {exercise.name}
+            </div>
+            <div style={{ fontSize: 11, color: c.muted, marginTop: 1 }}>{summary}</div>
           </div>
-          <div style={{ fontSize: 11, color: c.muted, marginTop: 1 }}>{summary}</div>
-        </div>
-        <ChevronRight
-          size={14} color={c.muted}
-          style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease', flexShrink: 0 }}
-        />
-      </button>
+          <ChevronRight
+            size={14} color={c.muted}
+            style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease', flexShrink: 0 }}
+          />
+        </button>
+      </div>
 
       {expanded && (
         <div style={{ padding: '2px 2px 12px' }}>
@@ -435,6 +468,20 @@ function SessionCard({ programId, session, allExercises, onChanged }) {
         {(() => {
           const groups = groupExercises(exercises);
           const singleNames = groups.filter(g => g.type === 'single').map(g => exercises[g.indices[0]].name);
+          // Reorder by moving a whole group (a single exercise, or a
+          // superset pair together) up/down, then flatten every group back
+          // into a flat exercise-name order for editProgramSession's
+          // `order` op — groups always partition every exercise, so this
+          // covers the full session.
+          const moveGroup = (gi, direction) => {
+            const target = gi + direction;
+            if (target < 0 || target >= groups.length) return;
+            const reordered = groups.slice();
+            [reordered[gi], reordered[target]] = [reordered[target], reordered[gi]];
+            const order = reordered.flatMap(g => g.indices.map(i => exercises[i].name));
+            editProgramSession({ session_label: session.session_label, order }, programId);
+            onChanged();
+          };
           return groups.map((grp, gi) => {
             if (grp.type === 'single') {
               const ex = exercises[grp.indices[0]];
@@ -452,6 +499,10 @@ function SessionCard({ programId, session, allExercises, onChanged }) {
                     onChanged();
                   }}
                   onChanged={onChanged}
+                  onMoveUp={() => moveGroup(gi, -1)}
+                  onMoveDown={() => moveGroup(gi, 1)}
+                  canMoveUp={gi > 0}
+                  canMoveDown={gi < groups.length - 1}
                 />
               );
             }
@@ -467,9 +518,10 @@ function SessionCard({ programId, session, allExercises, onChanged }) {
                 margin: gi === 0 ? '0 0 8px' : '10px 0 8px',
                 border: `1.5px solid ${c.blush}`, borderRadius: 14, padding: '0 10px',
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 0 0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 0' }}>
                   <Link2 size={10} color={c.rosedeep} />
-                  <span style={{ fontSize: 9, fontWeight: 800, color: c.rosedeep, letterSpacing: 0.6 }}>SUPERSET</span>
+                  <span style={{ fontSize: 9, fontWeight: 800, color: c.rosedeep, letterSpacing: 0.6, flex: 1 }}>SUPERSET</span>
+                  <MoveButtons onUp={() => moveGroup(gi, -1)} onDown={() => moveGroup(gi, 1)} canUp={gi > 0} canDown={gi < groups.length - 1} />
                 </div>
                 <ExerciseRow programId={programId} sessionLabel={session.session_label} exercise={exA} allExercises={allExercises} isFirst partnerName={exB.name} onUnlink={unlink} onChanged={onChanged} />
                 <ExerciseRow programId={programId} sessionLabel={session.session_label} exercise={exB} allExercises={allExercises} isFirst partnerName={exA.name} onUnlink={unlink} onChanged={onChanged} />
