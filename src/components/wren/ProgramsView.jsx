@@ -16,55 +16,89 @@ function ProgramSubtitle({ program }) {
   return <span>{week} week{week === 1 ? '' : 's'} in</span>;
 }
 
+// Session count/labels ("3 days · A, B, C"), read the same way ProgramView
+// does — every week is kept structurally identical, so week 1 stands in
+// for the whole program.
+function ProgramDayLabels({ program }) {
+  const week = program?.program_json?.weeks?.[0];
+  if (!week?.sessions) return null;
+  const labels = Array.isArray(week.sessions)
+    ? week.sessions.map((s, i) => s.session_label || s.label || String.fromCharCode(65 + i))
+    : Object.keys(week.sessions);
+  if (!labels.length) return null;
+  return <span>{labels.length} day{labels.length === 1 ? '' : 's'} · {labels.join(', ')}</span>;
+}
+
 function ProgramRow({ program, onOpen, onDuplicate, onRename, onArchive, onUnarchive }) {
   const [menuOpen, setMenuOpen] = useState(false);
   return (
     <div style={{
-      borderRadius: 14, border: `1px solid ${c.line}`, background: c.white,
-      marginBottom: 8, overflow: 'hidden',
+      borderRadius: 22, border: `1px solid ${c.line}`,
+      background: program.active ? `linear-gradient(135deg, ${c.rosedeep}, ${c.rose})` : c.white,
+      marginBottom: 14, overflow: 'hidden',
+      boxShadow: '0 6px 20px rgba(120,80,140,0.10)',
     }}>
       <button
         onClick={() => onOpen(program.id)}
         style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-          padding: '12px 14px', border: 'none', background: 'none', cursor: 'pointer',
+          width: '100%', display: 'flex', alignItems: 'center', gap: 16,
+          padding: '22px 20px', border: 'none', background: 'none', cursor: 'pointer',
           fontFamily: 'inherit', textAlign: 'left',
         }}
       >
         <div style={{
-          width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
-          background: program.active ? `linear-gradient(135deg, ${c.rosedeep}, ${c.rose})` : c.paper,
+          width: 60, height: 60, borderRadius: 18, flexShrink: 0,
+          background: program.active ? 'rgba(255,255,255,0.25)' : c.paper,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
-          <ListChecks size={15} color={program.active ? 'white' : c.muted} />
+          <ListChecks size={28} color={program.active ? 'white' : c.rosedeep} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: c.charcoal, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{
+              fontSize: 19, fontWeight: 800, letterSpacing: -0.3,
+              color: program.active ? 'white' : c.charcoal,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
               {program.name || 'Untitled program'}
             </span>
             {program.active && (
-              <span style={{ fontSize: 9, fontWeight: 700, color: c.rosedeep, background: c.blushLight, padding: '1px 7px', borderRadius: 999, flexShrink: 0 }}>
+              <span style={{
+                fontSize: 10, fontWeight: 700, color: c.rosedeep, background: 'white',
+                padding: '2px 9px', borderRadius: 999, flexShrink: 0,
+              }}>
                 Active
               </span>
             )}
           </div>
-          <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>
+          <div style={{
+            fontSize: 13, marginTop: 4, fontWeight: 600,
+            color: program.active ? 'rgba(255,255,255,0.92)' : c.muted,
+          }}>
             <ProgramSubtitle program={program} />
+          </div>
+          <div style={{
+            fontSize: 12, marginTop: 3,
+            color: program.active ? 'rgba(255,255,255,0.78)' : c.faint,
+          }}>
+            <ProgramDayLabels program={program} />
           </div>
         </div>
         <button
           onClick={(e) => { e.stopPropagation(); setMenuOpen(v => !v); }}
           style={{
-            width: 28, height: 28, borderRadius: '50%', border: 'none', background: c.paper,
+            width: 34, height: 34, borderRadius: '50%', border: 'none',
+            background: program.active ? 'rgba(255,255,255,0.25)' : c.paper,
             display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0,
           }}
         >
-          {menuOpen ? <X size={13} color={c.muted} /> : <ChevronRight size={15} color={c.muted} />}
+          {menuOpen
+            ? <X size={16} color={program.active ? 'white' : c.muted} />
+            : <ChevronRight size={18} color={program.active ? 'white' : c.muted} />}
         </button>
       </button>
       {menuOpen && (
-        <div style={{ display: 'flex', gap: 6, padding: '0 14px 12px' }}>
+        <div style={{ display: 'flex', gap: 8, padding: '0 20px 18px' }}>
           <button
             onClick={(e) => { e.stopPropagation(); onDuplicate(program); setMenuOpen(false); }}
             style={rowActionStyle}
@@ -101,9 +135,9 @@ function ProgramRow({ program, onOpen, onDuplicate, onRename, onArchive, onUnarc
 }
 
 const rowActionStyle = {
-  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-  padding: '7px 0', borderRadius: 10, border: `1px solid ${c.line}`, background: c.paper,
-  fontSize: 10.5, fontWeight: 600, color: c.charcoal, cursor: 'pointer', fontFamily: 'inherit',
+  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+  padding: '10px 0', borderRadius: 12, border: 'none', background: 'rgba(255,255,255,0.9)',
+  fontSize: 11.5, fontWeight: 700, color: c.charcoal, cursor: 'pointer', fontFamily: 'inherit',
 };
 
 // Bottom sheet for creating a program — optional name, then either a blank
