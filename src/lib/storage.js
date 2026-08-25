@@ -1042,13 +1042,26 @@ export function getSessionsForProgram(id) {
 }
 
 // A program's "start date" = the date of its first logged session, per
-// user decision — NOT creation/activation time. Returns null (not started
-// yet) until something's actually been logged against it.
+// user decision — NOT creation/activation time. A manual override (see
+// setProgramStartDateOverride) takes precedence when set — e.g. after a
+// heavy round of edits, restarting the week count at 1 without needing to
+// touch or lose any already-logged history. Returns null (not started yet)
+// until something's actually been logged against it and no override is set.
 export function getProgramStartDate(id) {
+  const override = getProgramMeta(id).startDateOverride;
+  if (Number.isFinite(Number(override))) return new Date(Number(override));
   const sessions = getSessionsForProgram(id);
   if (!sessions.length) return null;
   const earliest = Math.min(...sessions.map(s => s.finishedAt || Infinity));
   return Number.isFinite(earliest) ? new Date(earliest) : null;
+}
+
+// Restart a program's week count from 1 as of the current calendar week —
+// without touching any logged session history. Pass null/undefined to
+// clear the override and go back to deriving the start date from the
+// earliest logged session.
+export function setProgramStartDateOverride(id, timestamp) {
+  updateProgramMeta(id, meta => ({ ...meta, startDateOverride: timestamp ?? null }));
 }
 
 // One-time, per-device migration: copies the legacy flat global KV keys

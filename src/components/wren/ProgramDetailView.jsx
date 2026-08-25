@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { ChevronLeft, Pencil, History, Star, Plus, X, Trash2 } from 'lucide-react';
+import { ChevronLeft, Pencil, History, Star, Plus, X, Trash2, RotateCcw } from 'lucide-react';
 import { c } from './tokens';
-import { getProgram, setActiveProgram, renameProgram, addProgramSession } from '../../lib/storage';
+import { getProgram, setActiveProgram, renameProgram, addProgramSession, setProgramStartDateOverride, currentWeekKey } from '../../lib/storage';
 import ProgramView from './ProgramView';
 import ProgramChat from './ProgramChat';
+import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 
 // Sheet for adding a new day (session) to this program — a label plus a
 // short freeform exercise list. Spans every week of the program (or seeds
@@ -150,6 +151,13 @@ export default function ProgramDetailView({ programId, initialTab = 'plan', onBa
 
   const startRename = () => { setNameDraft(rawProgram.name || ''); setEditingName(true); };
   const saveRename = () => { renameProgram(programId, nameDraft); setEditingName(false); refresh(); };
+  const { hasStarted } = getCurrentWeekAndMesocycle(rawProgram);
+  const startOver = () => {
+    // Monday of the current calendar week — matches how every other
+    // week-boundary in the app is anchored (see currentWeekKey/weekKeyFor).
+    setProgramStartDateOverride(programId, new Date(`${currentWeekKey()}T00:00:00`).getTime());
+    refresh();
+  };
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: c.cream }}>
@@ -226,6 +234,19 @@ export default function ProgramDetailView({ programId, initialTab = 'plan', onBa
           >
             <Plus size={12} /> Add day
           </button>
+          {hasStarted && (
+            <button
+              onClick={startOver}
+              title="Restart the week count from 1 — doesn't touch any logged history"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 999,
+                border: `1px solid ${c.line}`, background: c.white, cursor: 'pointer', fontSize: 11,
+                fontWeight: 700, fontFamily: 'inherit', color: c.charcoal,
+              }}
+            >
+              <RotateCcw size={12} /> Start over
+            </button>
+          )}
         </div>
 
         <div style={{
