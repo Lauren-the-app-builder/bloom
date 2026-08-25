@@ -36,6 +36,16 @@ export default async function handler(req, res) {
     missedSessionCount = 0,
     missedSessionDetails = [],
     activeProgram,
+    // Which program this conversation is scoped to. Absent (the default)
+    // means the general Chat tab — Wren keeps talking about Lauren's one
+    // finalized program exactly as always. Present means a specific
+    // program's own chat (see ProgramChat.jsx / src/components/wren/
+    // ProgramDetailView.jsx), which may be a brand-new or different program
+    // than the one described below — see programContextBlock.
+    programId = null,
+    programName = null,
+    programSummary = '',
+    otherProgramNames = [],
     thisWeekSessions = [],
     lastSessionData,
     workoutNames = [],
@@ -60,6 +70,51 @@ export default async function handler(req, res) {
       return `${dayNames[i]}: ${w ? w.name : 'rest'}`;
     })
     .join(', ');
+
+  // Which program to describe in the system prompt. Absent programId (the
+  // general Chat tab) keeps Lauren's literal finalized program exactly as
+  // it's always been described — zero behavior change for the existing
+  // daily-use flow. A present programId (a program's own scoped chat, see
+  // ProgramChat.jsx) swaps in a generic block about THAT program instead,
+  // so Wren doesn't recreate the same hardcoded program every time.
+  const programContextBlock = programId
+    ? `You're currently talking with Lauren inside a specific program${programName ? ` named "${programName}"` : ''} — this is NOT necessarily her main finalized program described elsewhere; treat it as its own thing. ${
+        programSummary
+          ? `Here's what it currently has:\n${programSummary}\n\nWhen Lauren asks you to build or change it, use generate_program (full rebuild) or edit_workout (small change) — it does not need to match her other programs${otherProgramNames.length ? ` (${otherProgramNames.join(', ')})` : ''} in session count, week count, or exercise choice.`
+          : `It's empty so far — no days or exercises yet. Ask what she wants from it (goal, days per week, focus, anything to avoid) before generating anything with generate_program. Don't default to the finalized program described elsewhere unless she explicitly asks you to copy it.`
+      }`
+    : `Lauren's finalized program (3 sessions per week, full body):
+
+Session A (default Monday):
+1. Seated dumbbell shoulder press — 3x6-8
+2. Lat pulldown (wide grip) — 3x8-10
+3. Cable face pull — 3x12-15
+4. Machine hip thrust — 3x10-12
+5. Leg press — 3x10-12
+6. Cable lateral raise + Tricep pushdown (SUPERSET) — 2x15 / 2x12
+
+Session B (default Wednesday):
+1. Incline barbell press — 3x8-10
+2. Seated cable row (wide grip) — 3x8-10
+3. Dumbbell lateral raise — 3x12-15
+4. Machine hip thrust — 3x10-12
+5. Hip abductor + Hip adductor (SUPERSET) — 3x15 / 3x15
+6. Straight arm pulldown — 3x12-15
+
+Session C (default Friday):
+1. Standing barbell overhead press — 3x6-8
+2. Pull-ups or assisted pull-ups — 3x max/8
+3. Seated cable row (wide grip) — 3x10-12
+4. Hack squat — 3x10-12
+5. Cable reverse fly — 2x15
+6. Seated leg curl — 3x10-12
+
+Exercises NOT in Lauren's program (never suggest these): Romanian deadlift, barbell back squat, cable kickback, reverse pec deck, Bulgarian split squat, landmine row, goblet squat, rear delt pull-apart, lunges, any single-leg hip thrust variation.
+
+Onboarding (when no program exists yet):
+- Lauren's program is already defined above. Generate it using generate_program with the exact exercises, sets, and reps listed.
+- Set all target_weight_kg to null — weights will be logged from her first sessions.
+- Present a plain-language summary including the punishment rules.`;
 
   const systemPrompt = `You are Wren, a personal strength coach, certified nutritionist, AND licensed physical therapist inside the Bloom fitness app. Keeping Lauren healthy and training for years is as core to your job as any short-term progress — you are here to PREVENT injury, never to push her into one. You coach Lauren, a woman training for a lean, muscular physique. She trains 3 days per week on a full-body lifting program (days flex based on her weekly availability). Lifting is the only training modality you PROGRAM — never auto-add a lifting day. Cardio is week-scoped and user-added: when Lauren mentions a class or cardio session she's planning this week, you can add it for her via the add_cardio_session action (see below). Don't surface cardio recommendations unprompted unless her own data (recent fatigue, weekly pattern) suggests it's relevant. Nutrition is fully in scope: you coach her food, calories, macros, hydration, and meal timing alongside her training.
 
@@ -166,38 +221,7 @@ Missed session rules (enforce these strictly):
   Tell Lauren about the punishment system upfront during onboarding.
   - Injury, pain, and illness NEVER count toward a punishment and never trigger one — those are smart, healthy choices, not misses to correct. Only motivation-based misses do.
 
-Lauren's finalized program (3 sessions per week, full body):
-
-Session A (default Monday):
-1. Seated dumbbell shoulder press — 3x6-8
-2. Lat pulldown (wide grip) — 3x8-10
-3. Cable face pull — 3x12-15
-4. Machine hip thrust — 3x10-12
-5. Leg press — 3x10-12
-6. Cable lateral raise + Tricep pushdown (SUPERSET) — 2x15 / 2x12
-
-Session B (default Wednesday):
-1. Incline barbell press — 3x8-10
-2. Seated cable row (wide grip) — 3x8-10
-3. Dumbbell lateral raise — 3x12-15
-4. Machine hip thrust — 3x10-12
-5. Hip abductor + Hip adductor (SUPERSET) — 3x15 / 3x15
-6. Straight arm pulldown — 3x12-15
-
-Session C (default Friday):
-1. Standing barbell overhead press — 3x6-8
-2. Pull-ups or assisted pull-ups — 3x max/8
-3. Seated cable row (wide grip) — 3x10-12
-4. Hack squat — 3x10-12
-5. Cable reverse fly — 2x15
-6. Seated leg curl — 3x10-12
-
-Exercises NOT in Lauren's program (never suggest these): Romanian deadlift, barbell back squat, cable kickback, reverse pec deck, Bulgarian split squat, landmine row, goblet squat, rear delt pull-apart, lunges, any single-leg hip thrust variation.
-
-Onboarding (when no program exists yet):
-- Lauren's program is already defined above. Generate it using generate_program with the exact exercises, sets, and reps listed.
-- Set all target_weight_kg to null — weights will be logged from her first sessions.
-- Present a plain-language summary including the punishment rules.
+${programContextBlock}
 
 Communication style (THIS IS CRITICAL):
 - Keep every message SHORT. 1-3 sentences max. This is a chat, not an essay.
@@ -273,6 +297,7 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
 
   const contextBlock = [
     `Current week: ${currentWeek ?? '?'} of 12`,
+    ...(programId ? [`This conversation is scoped to the program${programName ? ` "${programName}"` : ' (unnamed)'}${otherProgramNames.length ? `. Lauren's other programs: ${otherProgramNames.join(', ')}` : ''}.`] : []),
     `Mesocycle: ${currentMesocycle ?? '?'} (${phase ?? '?'})`,
     `Is deload week: ${isDeload ? 'yes' : 'no'}`,
     `Confirmed deload weeks: ${deloadWeeks.length ? deloadWeeks.join(', ') : 'none yet'}`,

@@ -17,6 +17,14 @@ export async function askWren(message, context = {}, midWorkout = false) {
     unit = 'kg',
     workoutNames = [],
     activeProgram,
+    // Which program this conversation is about — present when called from a
+    // program's own scoped chat (ProgramChat); absent for the general Chat
+    // tab, which keeps talking about Lauren's one onboarding/finalized
+    // program exactly as before. See api/wren.js.
+    programId = null,
+    programName = null,
+    programSummary = '',
+    otherProgramNames = [],
     fullHistory = [],
     myWorkouts = [],
     sessions = [],
@@ -59,6 +67,10 @@ export async function askWren(message, context = {}, midWorkout = false) {
         lastSessionData,
         workoutNames,
         activeProgram,
+        programId,
+        programName,
+        programSummary,
+        otherProgramNames,
         unit,
         bandsBestReps,
         bandsSummary,

@@ -154,8 +154,14 @@ export function clearWorkoutDraft() {
 }
 
 // ---------- Wren chat ----------
+// The general Chat tab's thread — explicitly excludes program-scoped
+// messages (see getProgramWrenMessages) so the two never leak into each
+// other. Every message from before multi-program support has no
+// `programId`, so this is a no-op filter for existing data.
 export function getWrenMessages() {
-  return load('wrenChat', []).sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+  return load('wrenChat', [])
+    .filter(m => !m.programId)
+    .sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
 }
 
 export function addWrenMessage(msg) {
@@ -165,11 +171,13 @@ export function addWrenMessage(msg) {
   return list;
 }
 
-// Archive the current chat into wrenChatArchive (so nothing is ever lost) and
-// clear wrenChat so the next exchange starts fresh — Wren has no memory of
-// the prior thread. Triggered when Lauren has been away long enough.
+// Archive the current GLOBAL chat into wrenChatArchive (so nothing is ever
+// lost) and clear it so the next exchange starts fresh — Wren has no memory
+// of the prior thread. Triggered when Lauren has been away long enough.
+// Program-scoped threads (ProgramChat) are untouched — each one manages its
+// own continuity independently, this only ever resets the Chat tab.
 export function resetWrenChat() {
-  const current = load('wrenChat', []);
+  const current = load('wrenChat', []).filter(m => !m.programId);
   if (!current.length) return;
   const archive = load('wrenChatArchive', []);
   archive.push({
@@ -178,7 +186,79 @@ export function resetWrenChat() {
     messages: current,
   });
   save('wrenChatArchive', archive);
-  save('wrenChat', []);
+  save('wrenChat', load('wrenChat', []).filter(m => m.programId));
+}
+
+// ---------- Program-scoped Wren chat (ProgramChat) ----------
+export function getProgramWrenMessages(programId) {
+  if (!programId) return [];
+  return load('wrenChat', [])
+    .filter(m => m.programId === programId)
+    .sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+}
+
+export function addProgramWrenMessage(programId, msg) {
+  if (!programId) return [];
+  const list = load('wrenChat', []);
+  list.push({ ...msg, programId, id: msg.id || crypto.randomUUID(), created_at: msg.created_at || Date.now() });
+  save('wrenChat', list);
+  return getProgramWrenMessages(programId);
+}
+
+// ---------- Per-program store helpers ----------
+// Core primitives every program-scoped getter/mutator below builds on. A
+// program row (from `load('wrenProgram', [])`) looks like:
+//   { id, program_json: { weeks: [...], meta: {...} }, active, archived,
+//     name, created_at, updated_at }
+// `meta` holds schedule-confirmation/deload/injury/skip/off-week state that
+// used to live as flat global KV keys shared by every program — it now
+// travels with the specific program it belongs to, riding the same
+// program_json blob (and therefore the same wrenProgram sync entity) with
+// zero DB migration required for that part.
+function getRawProgram(id) {
+  if (!id) return null;
+  return load('wrenProgram', []).find(p => p.id === id) || null;
+}
+
+// Defensive: saveProgram()/setActiveProgram() write with no server
+// transaction, so two rows can in theory both read `active: true` at once.
+// Prefer the most recently touched one rather than silently taking
+// whichever happens to sort first.
+function getActiveProgramRaw() {
+  const actives = load('wrenProgram', []).filter(p => p.active);
+  if (actives.length <= 1) return actives[0] || null;
+  return actives
+    .slice()
+    .sort((a, b) => (Number(b.updated_at) || Number(b.created_at) || 0) - (Number(a.updated_at) || Number(a.created_at) || 0))[0];
+}
+
+// Every program-scoped getter/mutator takes an optional trailing
+// `programId` and falls back to the active program when omitted, so every
+// pre-multi-program call site keeps working unchanged.
+function resolveProgramId(programId) {
+  return programId || getActiveProgramRaw()?.id || null;
+}
+
+function getProgramMeta(programId) {
+  const raw = getRawProgram(resolveProgramId(programId));
+  const pj = raw?.program_json;
+  return pj && typeof pj === 'object' && pj.meta && typeof pj.meta === 'object' ? pj.meta : {};
+}
+
+// Read-modify-write one program's meta object. `updater(meta) => nextMeta`.
+function updateProgramMeta(programId, updater) {
+  const id = resolveProgramId(programId);
+  if (!id) return {};
+  const list = load('wrenProgram', []);
+  const idx = list.findIndex(p => p.id === id);
+  if (idx === -1) return {};
+  const entry = list[idx];
+  const pj = entry.program_json && typeof entry.program_json === 'object' ? entry.program_json : {};
+  const meta = pj.meta && typeof pj.meta === 'object' ? pj.meta : {};
+  const nextMeta = updater(meta) || meta;
+  list[idx] = { ...entry, program_json: { ...pj, meta: nextMeta }, updated_at: Date.now() };
+  save('wrenProgram', list);
+  return nextMeta;
 }
 
 // ---------- Wren program ----------
@@ -242,72 +322,73 @@ export function clearSetsOverride(name) {
   save(SETS_OVERRIDES_KEY, next);
 }
 
-// ---------- Deload weeks ----------
+// ---------- Deload weeks (per program) ----------
 // Deload is no longer auto-assigned every 4th week — it now only takes
 // effect for weeks Lauren has explicitly confirmed with Wren. These
-// helpers manage the persisted list.
-export function getDeloadWeeks() {
-  const v = load('deloadWeeks', []);
+// helpers manage the persisted list, scoped to one program's own meta
+// (defaults to whichever program is active when `programId` is omitted).
+export function getDeloadWeeks(programId) {
+  const v = getProgramMeta(programId).deloadWeeks;
   return Array.isArray(v) ? v.map(n => Number(n)).filter(Number.isFinite) : [];
 }
 
-export function isDeloadWeek(weekNum) {
+export function isDeloadWeek(weekNum, programId) {
   if (!Number.isFinite(weekNum) || weekNum <= 0) return false;
-  return getDeloadWeeks().includes(Number(weekNum));
+  return getDeloadWeeks(programId).includes(Number(weekNum));
 }
 
-export function addDeloadWeek(weekNum) {
+export function addDeloadWeek(weekNum, programId) {
   const n = Number(weekNum);
-  if (!Number.isFinite(n) || n <= 0) return getDeloadWeeks();
-  const set = new Set(getDeloadWeeks());
+  if (!Number.isFinite(n) || n <= 0) return getDeloadWeeks(programId);
+  const set = new Set(getDeloadWeeks(programId));
   set.add(n);
   const next = [...set].sort((a, b) => a - b);
-  save('deloadWeeks', next);
+  updateProgramMeta(programId, meta => ({ ...meta, deloadWeeks: next }));
   return next;
 }
 
-export function removeDeloadWeek(weekNum) {
+export function removeDeloadWeek(weekNum, programId) {
   const n = Number(weekNum);
-  const next = getDeloadWeeks().filter(x => x !== n);
-  save('deloadWeeks', next);
+  const next = getDeloadWeeks(programId).filter(x => x !== n);
+  updateProgramMeta(programId, meta => ({ ...meta, deloadWeeks: next }));
   return next;
 }
 
-// ---------- Injury weeks ----------
+// ---------- Injury weeks (per program) ----------
 // A week Lauren flagged as injured — she was hurt and trained reduced (or not
 // at all). Purely a marker: it surfaces an "Injured" sign on the week in the
 // Program view and tells the missed-session logic not to nag her for the
 // sessions she couldn't do. It does NOT rewrite the week's sessions (that's the
 // separate, larger Injury-Week override feature) and does NOT change set/rep
-// math. Mirrors the deload-week store so it rides the same KV sync path.
-export function getInjuryWeeks() {
-  const v = load('injuryWeeks', []);
+// math. Mirrors the deload-week store, scoped the same way.
+export function getInjuryWeeks(programId) {
+  const v = getProgramMeta(programId).injuryWeeks;
   return Array.isArray(v) ? v.map(n => Number(n)).filter(Number.isFinite) : [];
 }
 
-export function isInjuryWeek(weekNum) {
+export function isInjuryWeek(weekNum, programId) {
   if (!Number.isFinite(weekNum) || weekNum <= 0) return false;
-  return getInjuryWeeks().includes(Number(weekNum));
+  return getInjuryWeeks(programId).includes(Number(weekNum));
 }
 
-export function addInjuryWeek(weekNum) {
+export function addInjuryWeek(weekNum, programId) {
   const n = Number(weekNum);
-  if (!Number.isFinite(n) || n <= 0) return getInjuryWeeks();
-  const set = new Set(getInjuryWeeks());
+  if (!Number.isFinite(n) || n <= 0) return getInjuryWeeks(programId);
+  const set = new Set(getInjuryWeeks(programId));
   set.add(n);
   const next = [...set].sort((a, b) => a - b);
-  save('injuryWeeks', next);
+  updateProgramMeta(programId, meta => ({ ...meta, injuryWeeks: next }));
   return next;
 }
 
-export function removeInjuryWeek(weekNum) {
+export function removeInjuryWeek(weekNum, programId) {
   const n = Number(weekNum);
-  const next = getInjuryWeeks().filter(x => x !== n);
-  save('injuryWeeks', next);
+  const next = getInjuryWeeks(programId).filter(x => x !== n);
+  updateProgramMeta(programId, meta => ({ ...meta, injuryWeeks: next }));
   return next;
 }
 
-// ---------- Off weeks (injury / vacation, calendar-based) ----------
+// ---------- Off weeks (injury / vacation, calendar-based, per program) ----------
 // Distinct from the training-week-number injuryWeeks above. This one is
 // keyed by CALENDAR week (Monday-anchored, e.g. "2026-07-20") because it
 // drives pausing week progression (see getCurrentWeekAndMesocycle in
@@ -315,10 +396,11 @@ export function removeInjuryWeek(weekNum) {
 // the number itself is only knowable once you already know which past
 // calendar weeks were paused. Set directly from the home screen (not via
 // Wren chat). Reason is 'injury' or 'vacation'; both mean "no training
-// expected this week, don't advance the program."
+// expected this week, don't advance the program." Scoped to the program
+// that's paused, so switching to a different active program doesn't inherit
+// an off-week that only ever applied to the one you paused.
 //
 // Shape: { [weekKey]: { reason: 'injury'|'vacation', createdAt } }
-const OFF_WEEKS_KEY = 'offWeeks';
 const OFF_WEEK_REASONS = new Set(['injury', 'vacation']);
 
 // Monday-anchored key for the calendar week containing `d`, e.g. "2026-07-20".
@@ -328,29 +410,29 @@ export function weekKeyFor(d = new Date()) {
   return currentWeekKey(d);
 }
 
-export function getOffWeeks() {
-  const v = load(OFF_WEEKS_KEY, {});
+export function getOffWeeks(programId) {
+  const v = getProgramMeta(programId).offWeeks;
   return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
 }
 
-export function getOffWeek(weekKey) {
-  const entry = getOffWeeks()[weekKey];
+export function getOffWeek(weekKey, programId) {
+  const entry = getOffWeeks(programId)[weekKey];
   return entry && OFF_WEEK_REASONS.has(entry.reason) ? entry.reason : null;
 }
 
-export function setOffWeek(weekKey, reason) {
-  if (!weekKey || !OFF_WEEK_REASONS.has(reason)) return getOffWeeks();
-  const next = { ...getOffWeeks(), [weekKey]: { reason, createdAt: Date.now() } };
-  save(OFF_WEEKS_KEY, next);
+export function setOffWeek(weekKey, reason, programId) {
+  if (!weekKey || !OFF_WEEK_REASONS.has(reason)) return getOffWeeks(programId);
+  const next = { ...getOffWeeks(programId), [weekKey]: { reason, createdAt: Date.now() } };
+  updateProgramMeta(programId, meta => ({ ...meta, offWeeks: next }));
   return next;
 }
 
-export function clearOffWeek(weekKey) {
-  const current = getOffWeeks();
+export function clearOffWeek(weekKey, programId) {
+  const current = getOffWeeks(programId);
   if (!(weekKey in current)) return current;
   const next = { ...current };
   delete next[weekKey];
-  save(OFF_WEEKS_KEY, next);
+  updateProgramMeta(programId, meta => ({ ...meta, offWeeks: next }));
   return next;
 }
 
@@ -359,24 +441,23 @@ export function clearOffWeek(weekKey) {
 // sessions — this is ad hoc and scoped to just that one calendar week, so
 // picking "Wednesday" for a workout during one injury week doesn't stick
 // around for every week after. Shape: { [weekKey]: { [workoutId]: day } }
-const OFF_WEEK_WORKOUT_DAYS_KEY = 'offWeekWorkoutDays';
-
-export function getOffWeekWorkoutDays(weekKey) {
-  const all = load(OFF_WEEK_WORKOUT_DAYS_KEY, {});
+export function getOffWeekWorkoutDays(weekKey, programId) {
+  const all = getProgramMeta(programId).offWeekWorkoutDays;
   const forWeek = all && typeof all === 'object' ? all[weekKey] : null;
   return forWeek && typeof forWeek === 'object' ? forWeek : {};
 }
 
-export function setOffWeekWorkoutDay(weekKey, workoutId, day) {
+export function setOffWeekWorkoutDay(weekKey, workoutId, day, programId) {
   if (!weekKey || !workoutId) return;
-  const all = load(OFF_WEEK_WORKOUT_DAYS_KEY, {});
+  const all = getProgramMeta(programId).offWeekWorkoutDays || {};
   const forWeek = { ...(all[weekKey] || {}) };
   if (day) forWeek[workoutId] = day;
   else delete forWeek[workoutId];
-  save(OFF_WEEK_WORKOUT_DAYS_KEY, { ...all, [weekKey]: forWeek });
+  const next = { ...all, [weekKey]: forWeek };
+  updateProgramMeta(programId, meta => ({ ...meta, offWeekWorkoutDays: next }));
 }
 
-// ---------- Skipped sessions ----------
+// ---------- Skipped sessions (per program) ----------
 // A specific lifting session (A/B/C) Lauren has intentionally skipped for a
 // given program week — e.g. she's injured and dropping Session C this week.
 // Keyed by program WEEK NUMBER + session label (not calendar date) so it lines
@@ -386,42 +467,42 @@ export function setOffWeekWorkoutDay(weekKey, workoutId, day) {
 // no punishment. Distinct from a logged session — nothing was trained.
 //
 // Shape: { week:number, label:'A'|'B'|'C', reason:string, createdAt:number }
-export function getSkippedSessions() {
-  const v = load('skippedSessions', []);
+export function getSkippedSessions(programId) {
+  const v = getProgramMeta(programId).skippedSessions;
   return Array.isArray(v)
     ? v.filter(s => s && Number.isFinite(Number(s.week)) && s.label)
     : [];
 }
 
-export function getSkippedSessionsForWeek(weekNum) {
+export function getSkippedSessionsForWeek(weekNum, programId) {
   const n = Number(weekNum);
-  return getSkippedSessions().filter(s => Number(s.week) === n);
+  return getSkippedSessions(programId).filter(s => Number(s.week) === n);
 }
 
-export function isSessionSkipped(weekNum, label) {
+export function isSessionSkipped(weekNum, label, programId) {
   const n = Number(weekNum);
   const L = String(label || '').toUpperCase();
   if (!Number.isFinite(n) || n <= 0 || !L) return false;
-  return getSkippedSessions().some(s => Number(s.week) === n && String(s.label).toUpperCase() === L);
+  return getSkippedSessions(programId).some(s => Number(s.week) === n && String(s.label).toUpperCase() === L);
 }
 
-export function addSkippedSession(weekNum, label, reason = '') {
+export function addSkippedSession(weekNum, label, reason = '', programId) {
   const n = Number(weekNum);
   const L = String(label || '').toUpperCase();
-  if (!Number.isFinite(n) || n <= 0 || !L) return getSkippedSessions();
-  if (isSessionSkipped(n, L)) return getSkippedSessions(); // idempotent
-  const next = [...getSkippedSessions(), {
+  if (!Number.isFinite(n) || n <= 0 || !L) return getSkippedSessions(programId);
+  if (isSessionSkipped(n, L, programId)) return getSkippedSessions(programId); // idempotent
+  const next = [...getSkippedSessions(programId), {
     week: n, label: L, reason: String(reason || '').trim(), createdAt: Date.now(),
   }];
-  save('skippedSessions', next);
+  updateProgramMeta(programId, meta => ({ ...meta, skippedSessions: next }));
   return next;
 }
 
-export function removeSkippedSession(weekNum, label) {
+export function removeSkippedSession(weekNum, label, programId) {
   const n = Number(weekNum);
   const L = String(label || '').toUpperCase();
-  const next = getSkippedSessions().filter(s => !(Number(s.week) === n && String(s.label).toUpperCase() === L));
-  save('skippedSessions', next);
+  const next = getSkippedSessions(programId).filter(s => !(Number(s.week) === n && String(s.label).toUpperCase() === L));
+  updateProgramMeta(programId, meta => ({ ...meta, skippedSessions: next }));
   return next;
 }
 
@@ -743,16 +824,245 @@ function normalizeProgram(rawProgram) {
 }
 
 export function getActiveProgram() {
-  const programs = load('wrenProgram', []);
-  const active = programs.find(p => p.active) || null;
-  return normalizeProgram(active);
+  return normalizeProgram(getActiveProgramRaw());
 }
 
+// Legacy full-rebuild path: replaces the active program wholesale and
+// activates the replacement. Used by the general Wren "Chat" tab's
+// generate_program action, unchanged from before multi-program support.
+// Creating an ADDITIONAL program (from the Programs list) goes through
+// createProgram() + updateProgramJson() instead — see those below.
 export function saveProgram(program) {
   const list = load('wrenProgram', []).map(p => ({ ...p, active: false }));
-  list.push({ ...program, id: program.id || crypto.randomUUID(), active: true, created_at: program.created_at || Date.now() });
+  list.push({
+    ...program,
+    id: program.id || crypto.randomUUID(),
+    active: true,
+    archived: false,
+    created_at: program.created_at || Date.now(),
+    updated_at: Date.now(),
+  });
   save('wrenProgram', list);
   return list;
+}
+
+// ---------- Multi-program management ----------
+export function getProgram(id) {
+  return normalizeProgram(getRawProgram(id));
+}
+
+// All programs (active first, then most-recently-touched), normalized.
+// Archived programs are hidden by default — pass includeArchived to see them.
+export function getPrograms({ includeArchived = false } = {}) {
+  const list = load('wrenProgram', []);
+  const filtered = includeArchived ? list : list.filter(p => !p.archived);
+  return filtered
+    .slice()
+    .sort((a, b) => {
+      if (!!a.active !== !!b.active) return a.active ? -1 : 1;
+      return (Number(b.updated_at) || Number(b.created_at) || 0) - (Number(a.updated_at) || Number(a.created_at) || 0);
+    })
+    .map(normalizeProgram);
+}
+
+// Reserve a new, inactive, empty-shell program — e.g. before opening a
+// scoped Wren chat to generate its content, or as a blank starting point
+// for manual editing. Never activates; see setActiveProgram().
+export function createProgram({ name = null } = {}) {
+  const list = load('wrenProgram', []);
+  const now = Date.now();
+  const entry = {
+    id: crypto.randomUUID(),
+    program_json: { weeks: [], meta: {} },
+    active: false,
+    archived: false,
+    name: name ? String(name).trim() : null,
+    created_at: now,
+    updated_at: now,
+  };
+  save('wrenProgram', [...list, entry]);
+  return entry;
+}
+
+// Deep-clones another program's weeks (including each session's
+// scheduled_day) into a brand-new, inactive program. Deliberately does NOT
+// carry over meta (deload/injury/skip/off-week history) — that history
+// belongs to the runs of the original program, not a fresh copy.
+export function duplicateProgram(id, { name } = {}) {
+  const source = getRawProgram(id);
+  if (!source) return null;
+  const list = load('wrenProgram', []);
+  const now = Date.now();
+  const sourcePj = source.program_json && typeof source.program_json === 'object' ? source.program_json : {};
+  const clonedWeeks = Array.isArray(sourcePj.weeks) ? JSON.parse(JSON.stringify(sourcePj.weeks)) : [];
+  const entry = {
+    id: crypto.randomUUID(),
+    program_json: { ...sourcePj, weeks: clonedWeeks, meta: {} },
+    active: false,
+    archived: false,
+    name: name ? String(name).trim() : (source.name ? `${source.name} (copy)` : null),
+    created_at: now,
+    updated_at: now,
+  };
+  save('wrenProgram', [...list, entry]);
+  return entry;
+}
+
+export function renameProgram(id, name) {
+  const list = load('wrenProgram', []);
+  const idx = list.findIndex(p => p.id === id);
+  if (idx === -1) return null;
+  list[idx] = { ...list[idx], name: String(name || '').trim() || null, updated_at: Date.now() };
+  save('wrenProgram', list);
+  return list[idx];
+}
+
+// Archived programs are hidden from getPrograms() by default but never
+// deleted — consistent with the rest of this store (deactivate/tombstone,
+// never hard-delete). The active program can't be archived; switch active
+// programs first.
+export function archiveProgram(id) {
+  const list = load('wrenProgram', []);
+  const idx = list.findIndex(p => p.id === id);
+  if (idx === -1 || list[idx].active) return idx === -1 ? null : list[idx];
+  list[idx] = { ...list[idx], archived: true, updated_at: Date.now() };
+  save('wrenProgram', list);
+  return list[idx];
+}
+
+export function unarchiveProgram(id) {
+  const list = load('wrenProgram', []);
+  const idx = list.findIndex(p => p.id === id);
+  if (idx === -1) return null;
+  list[idx] = { ...list[idx], archived: false, updated_at: Date.now() };
+  save('wrenProgram', list);
+  return list[idx];
+}
+
+// The ONLY function that flips which program is active — every other
+// mutator here just edits a program's own content. Un-archives the target
+// (can't be both archived and active) and deactivates whatever was active.
+export function setActiveProgram(id) {
+  const list = load('wrenProgram', []);
+  if (!list.some(p => p.id === id)) return null;
+  const now = Date.now();
+  const next = list.map(p => {
+    if (p.id === id) return { ...p, active: true, archived: false, updated_at: now };
+    if (p.active) return { ...p, active: false, updated_at: now };
+    return p;
+  });
+  save('wrenProgram', next);
+  return next.find(p => p.id === id);
+}
+
+// Replace a program's weeks wholesale (e.g. Wren's generate_program acting
+// on a specific, possibly non-active, program) while preserving its name,
+// meta, and active flag — unlike saveProgram(), this never activates.
+export function updateProgramJson(id, programJson) {
+  const list = load('wrenProgram', []);
+  const idx = list.findIndex(p => p.id === id);
+  if (idx === -1) return null;
+  const entry = list[idx];
+  const prevPj = entry.program_json && typeof entry.program_json === 'object' ? entry.program_json : {};
+  const nextPj = { ...(programJson || {}), meta: prevPj.meta || {} };
+  list[idx] = { ...entry, program_json: nextPj, updated_at: Date.now() };
+  save('wrenProgram', list);
+  return list[idx];
+}
+
+// Every session label already present across a program's weeks, upper-cased.
+function collectProgramSessionLabels(program) {
+  const labels = new Set();
+  for (const wk of program?.weeks || []) {
+    const raw = wk?.sessions;
+    if (!raw) continue;
+    const entries = Array.isArray(raw)
+      ? raw.map((s, i) => s?.session_label || s?.label || String.fromCharCode(65 + i))
+      : Object.entries(raw).map(([k, s]) => s?.session_label || s?.label || k);
+    for (const l of entries) if (l) labels.add(String(l).toUpperCase());
+  }
+  return labels;
+}
+
+// Sessions logged against a specific program. Prefers the robust
+// program_id column (every session logged after multi-program support
+// shipped); falls back to the same Session-label + date-window matching
+// ProgramView.jsx already did for legacy sessions logged before program_id
+// existed. That fallback is inherently ambiguous if two different programs
+// both used "Session A/B/C" before this shipped — accepted for old data,
+// self-heals going forward since every new session gets a real program_id.
+export function getSessionsForProgram(id) {
+  const raw = getRawProgram(id);
+  if (!raw) return [];
+  const all = getSessions();
+  const tagged = all.filter(s => s.programId === id);
+  if (tagged.length) return tagged;
+  const program = raw.program_json || raw;
+  const labels = collectProgramSessionLabels(program);
+  if (!labels.size) return [];
+  const createdAt = Number(raw.created_at) || 0;
+  return all.filter(s => {
+    const m = /^Session\s+([A-Za-z])/.exec(s.workoutName || '');
+    return m && labels.has(m[1].toUpperCase()) && (s.finishedAt || 0) >= createdAt;
+  });
+}
+
+// A program's "start date" = the date of its first logged session, per
+// user decision — NOT creation/activation time. Returns null (not started
+// yet) until something's actually been logged against it.
+export function getProgramStartDate(id) {
+  const sessions = getSessionsForProgram(id);
+  if (!sessions.length) return null;
+  const earliest = Math.min(...sessions.map(s => s.finishedAt || Infinity));
+  return Number.isFinite(earliest) ? new Date(earliest) : null;
+}
+
+// One-time, per-device migration: copies the legacy flat global KV keys
+// (deloadWeeks, injuryWeeks, skippedSessions, offWeeks, offWeekWorkoutDays,
+// scheduleWeekConfirmed) into the active program's own meta, so switching
+// programs doesn't silently drop Lauren's real, currently-live deload/
+// injury/skip state. Guarded by a local-only marker so it only ever runs
+// once per device. Only fills fields meta doesn't already have — protects
+// a second device (whose local legacy KV is empty/stale) from clobbering
+// meta a first device already migrated and synced. Old KV keys are left in
+// place (non-destructive), matching this store's existing conventions.
+const PROGRAM_STATE_MIGRATION_KEY = 'programStateMigratedV1';
+
+export function migrateGlobalProgramStateToActiveProgram() {
+  if (load(PROGRAM_STATE_MIGRATION_KEY, false)) return;
+  const active = getActiveProgramRaw();
+  if (!active) { save(PROGRAM_STATE_MIGRATION_KEY, true); return; }
+
+  updateProgramMeta(active.id, (meta) => {
+    const next = { ...meta };
+    if (!next.deloadWeeks?.length) {
+      const legacy = load('deloadWeeks', []);
+      if (Array.isArray(legacy) && legacy.length) next.deloadWeeks = legacy;
+    }
+    if (!next.injuryWeeks?.length) {
+      const legacy = load('injuryWeeks', []);
+      if (Array.isArray(legacy) && legacy.length) next.injuryWeeks = legacy;
+    }
+    if (!next.skippedSessions?.length) {
+      const legacy = load('skippedSessions', []);
+      if (Array.isArray(legacy) && legacy.length) next.skippedSessions = legacy;
+    }
+    if (!next.offWeeks || !Object.keys(next.offWeeks).length) {
+      const legacy = load('offWeeks', {});
+      if (legacy && typeof legacy === 'object' && Object.keys(legacy).length) next.offWeeks = legacy;
+    }
+    if (!next.offWeekWorkoutDays || !Object.keys(next.offWeekWorkoutDays).length) {
+      const legacy = load('offWeekWorkoutDays', {});
+      if (legacy && typeof legacy === 'object' && Object.keys(legacy).length) next.offWeekWorkoutDays = legacy;
+    }
+    if (!next.scheduleConfirmedWeekKey) {
+      const legacy = load('scheduleWeekConfirmed', null);
+      if (legacy) next.scheduleConfirmedWeekKey = legacy;
+    }
+    return next;
+  });
+
+  save(PROGRAM_STATE_MIGRATION_KEY, true);
 }
 
 // Walk every session in the active program(s), calling mutator(sess) when the
@@ -939,36 +1249,39 @@ function pruneCardioList(list) {
 }
 
 // Has Lauren set/confirmed her training days for the current week yet?
-export function isScheduleConfirmedThisWeek() {
-  return load('scheduleWeekConfirmed', null) === currentWeekKey();
+// (scoped to a program; defaults to whichever program is active)
+export function isScheduleConfirmedThisWeek(programId) {
+  return getProgramMeta(programId).scheduleConfirmedWeekKey === currentWeekKey();
 }
 
 // Has Lauren already planned NEXT week? Stays true through this week and
 // rolls over: once next Monday arrives, currentWeekKey advances to that
 // value and isScheduleConfirmedThisWeek() also returns true.
-export function isNextWeekScheduleConfirmed() {
-  return load('scheduleWeekConfirmed', null) === nextWeekKey();
+export function isNextWeekScheduleConfirmed(programId) {
+  return getProgramMeta(programId).scheduleConfirmedWeekKey === nextWeekKey();
 }
 
-export function markScheduleConfirmed() {
-  save('scheduleWeekConfirmed', currentWeekKey());
+export function markScheduleConfirmed(programId) {
+  updateProgramMeta(programId, meta => ({ ...meta, scheduleConfirmedWeekKey: currentWeekKey() }));
 }
 
-export function markNextWeekScheduleConfirmed() {
-  save('scheduleWeekConfirmed', nextWeekKey());
+export function markNextWeekScheduleConfirmed(programId) {
+  updateProgramMeta(programId, meta => ({ ...meta, scheduleConfirmedWeekKey: nextWeekKey() }));
 }
 
-// Update which weekday each session falls on, across every week of the active
-// program, in place (no new program record). `dayByLabel` maps a session label
-// to a full weekday name, e.g. { A: 'Monday', B: 'Wednesday', C: 'Friday' }.
+// Update which weekday each session falls on, across every week of a program,
+// in place (no new program record). `dayByLabel` maps a session label to a
+// full weekday name, e.g. { A: 'Monday', B: 'Wednesday', C: 'Friday' }.
 // Options:
 //   confirmFor — 'current' (default) marks this week confirmed; 'next' marks
 //                next week (used when planning ahead after finishing the
 //                current week); 'none' skips the confirmation update.
-export function setProgramSchedule(dayByLabel, { confirmFor = 'current' } = {}) {
+//   programId  — defaults to the active program.
+export function setProgramSchedule(dayByLabel, { confirmFor = 'current', programId } = {}) {
   if (!dayByLabel || !Object.keys(dayByLabel).length) return null;
+  const id = resolveProgramId(programId);
   const list = load('wrenProgram', []);
-  const idx = list.findIndex(p => p.active);
+  const idx = list.findIndex(p => p.id === id);
   if (idx === -1) return null;
   const entry = list[idx];
   const program = entry.program_json || entry;
@@ -991,16 +1304,17 @@ export function setProgramSchedule(dayByLabel, { confirmFor = 'current' } = {}) 
   });
 
   const newProgram = { ...program, weeks: newWeeks };
-  list[idx] = entry.program_json ? { ...entry, program_json: newProgram } : newProgram;
+  list[idx] = entry.program_json ? { ...entry, program_json: newProgram, updated_at: Date.now() } : newProgram;
   save('wrenProgram', list);
-  if (confirmFor === 'next') markNextWeekScheduleConfirmed();
-  else if (confirmFor === 'current') markScheduleConfirmed();
+  if (confirmFor === 'next') markNextWeekScheduleConfirmed(id);
+  else if (confirmFor === 'current') markScheduleConfirmed(id);
   return list[idx];
 }
 
 // Apply a single in-place edit to one session (by label) across every week of
-// the active program — so Wren can tweak workouts without rebuilding all 12
-// weeks. `op` supports exactly one operation:
+// a program — so Wren (or the program's own detail-page editor) can tweak
+// workouts without rebuilding every week. `op` supports exactly one
+// operation:
 //   { session_label, swap_from, swap_to }              — replace an exercise
 //   { session_label, add_exercise, reps, sets }         — add an exercise
 //   { session_label, remove_exercise }                   — remove an exercise
@@ -1009,22 +1323,26 @@ export function setProgramSchedule(dayByLabel, { confirmFor = 'current' } = {}) 
 //   { session_label, superset_a, superset_b }            — link two exercises as a superset
 //   { session_label, unlink_superset }                   — break any superset link involving this exercise
 //   { session_label, order: [...exerciseNames] }         — reorder exercises in the session
-// (sets may be combined with reps on the same op.)
-export function editProgramSession(op) {
+// (sets may be combined with reps on the same op.) `programId` defaults to
+// the active program.
+export function editProgramSession(op, programId) {
   if (!op || !op.session_label) return null;
 
   // Side-effects on the sets-overrides bag. Done up front so a swap/remove
   // can't leave a stale override pointing at an exercise that no longer
   // exists in any session, and so a new `sets` value lands even when no
-  // structural program change is needed (sets-only edit).
+  // structural program change is needed (sets-only edit). Sets overrides
+  // stay global across programs (keyed by exercise name only) — not
+  // scoped per-program in this pass.
   const setsNum = Number(op.sets);
   const hasSets = Number.isFinite(setsNum) && setsNum > 0;
   if (op.swap_from) clearSetsOverride(op.swap_from);
   if (op.remove_exercise) clearSetsOverride(op.remove_exercise);
   if (hasSets && op.exercise) setSetsOverride(op.exercise, setsNum);
   if (hasSets && op.add_exercise) setSetsOverride(op.add_exercise, setsNum);
+  const id = resolveProgramId(programId);
   const list = load('wrenProgram', []);
-  const idx = list.findIndex(p => p.active);
+  const idx = list.findIndex(p => p.id === id);
   if (idx === -1) return null;
   const entry = list[idx];
   const program = entry.program_json || entry;
@@ -1121,7 +1439,51 @@ export function editProgramSession(op) {
   });
 
   const newProgram = { ...program, weeks: newWeeks };
-  list[idx] = entry.program_json ? { ...entry, program_json: newProgram } : newProgram;
+  list[idx] = entry.program_json ? { ...entry, program_json: newProgram, updated_at: Date.now() } : newProgram;
+  save('wrenProgram', list);
+  return list[idx];
+}
+
+// A brand-new blank program (createProgram) starts with zero weeks — there's
+// nothing to add a session to yet. Seed 12 empty weeks the first time a day
+// gets added, matching every other program's week count in this app today
+// (see MESO_LABELS in ProgramView.jsx). Not a hard limit — Wren-generated
+// programs can still be any length via generate_program/updateProgramJson.
+const DEFAULT_NEW_PROGRAM_WEEKS = 12;
+
+// Add a brand-new session (day) with the given label to every week of a
+// program — mirrors how existing session labels already span every week,
+// rather than inventing a per-week day concept. No-op (per week) if that
+// label already exists there. `programId` defaults to the active program.
+export function addProgramSession(label, { exercises = [] } = {}, programId) {
+  const L = String(label || '').trim().toUpperCase();
+  if (!L) return null;
+  const id = resolveProgramId(programId);
+  const list = load('wrenProgram', []);
+  const idx = list.findIndex(p => p.id === id);
+  if (idx === -1) return null;
+  const entry = list[idx];
+  const program = entry.program_json || entry;
+  const baseWeeks = program?.weeks?.length
+    ? program.weeks
+    : Array.from({ length: DEFAULT_NEW_PROGRAM_WEEKS }, (_, i) => ({ week_number: i + 1, sessions: [] }));
+
+  const newWeeks = baseWeeks.map(wk => {
+    if (!wk) return wk;
+    const newSession = { session_label: L, exercises: exercises.map(e => ({ ...e })) };
+    if (Array.isArray(wk.sessions)) {
+      if (wk.sessions.some(s => String(s?.session_label || '').toUpperCase() === L)) return wk;
+      return { ...wk, sessions: [...wk.sessions, newSession] };
+    }
+    if (wk.sessions && typeof wk.sessions === 'object') {
+      if (L in wk.sessions) return wk;
+      return { ...wk, sessions: { ...wk.sessions, [L]: newSession } };
+    }
+    return { ...wk, sessions: [newSession] };
+  });
+
+  const newProgram = { ...program, weeks: newWeeks };
+  list[idx] = entry.program_json ? { ...entry, program_json: newProgram, updated_at: Date.now() } : newProgram;
   save('wrenProgram', list);
   return list[idx];
 }

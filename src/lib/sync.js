@@ -80,6 +80,9 @@ export async function pullAll() {
         // Deload flag — session counts as done but is excluded from
         // "previous performance" recall (see isDeloadSession in storage.js).
         ...(s.deload ? { deload: true } : {}),
+        // Which program this session was logged against (post multi-program
+        // rollout). Absent/null for legacy sessions and pre-migration rows.
+        ...(s.program_id ? { programId: s.program_id } : {}),
       }));
     // CRITICAL: preserve local sessions the server doesn't have yet. The boot
     // sequence pulls (and replaces the cache) BEFORE flushQueue() drains
@@ -138,6 +141,9 @@ export async function pullAll() {
       id: m.id, role: m.role, content: m.content,
       context_snapshot: m.context_snapshot,
       created_at: new Date(m.created_at).getTime(),
+      // Which program this message belongs to — absent/null for the
+      // general Chat tab and for rows from before program_id existed.
+      ...(m.program_id ? { programId: m.program_id } : {}),
     })));
   }
 
@@ -146,6 +152,11 @@ export async function pullAll() {
     saveKV('wrenProgram', wrenPrograms.data.map((p) => ({
       id: p.id, program_json: p.program_json, active: p.active,
       created_at: new Date(p.created_at).getTime(),
+      // name/archived/updated_at are undefined on rows read before migration
+      // 006 has been applied by hand — storage.js normalizes those.
+      name: p.name ?? null,
+      archived: !!p.archived,
+      updated_at: p.updated_at ? new Date(p.updated_at).getTime() : new Date(p.created_at).getTime(),
     })));
   }
 
@@ -208,20 +219,34 @@ const pushers = {
       // Persist the deload flag. Sent even when false so toggling off in
       // SessionEditModal clears the remote column.
       deload: !!s.deload,
+      // Which program this session was logged against. null is a valid,
+      // common value (legacy sessions, or logged outside any program).
+      program_id: s.programId || null,
     }));
     // Write IDs back to localStorage so future pushes are stable.
     saveKV('sessions', list.map((s, i) => ({ ...s, id: rows[i].id })));
     let { error } = await supabase.from('bloom_sessions').upsert(rows, { onConflict: 'id' });
-    // Self-heal: if the deload column hasn't been added to the DB yet, a full
-    // upsert rejects the WHOLE batch (undefined column) — which previously
-    // meant sessions never synced and the next pullAll() wiped any local-only
-    // ones. Detect that specific failure, strip `deload`, and retry so the
-    // session still persists. deload then rides local-only until the column
-    // lands, at which point this fallback stops firing. NEVER let one optional
-    // column cause session data loss again.
-    if (error && /deload/i.test(`${error.message || ''} ${error.details || ''}`)) {
-      const rowsNoDeload = rows.map(({ deload, ...rest }) => rest);
-      ({ error } = await supabase.from('bloom_sessions').upsert(rowsNoDeload, { onConflict: 'id' }));
+    // Self-heal: if an optional column (deload, program_id) hasn't been added
+    // to the DB yet, a full upsert rejects the WHOLE batch (undefined
+    // column) — which previously meant sessions never synced and the next
+    // pullAll() wiped any local-only ones. Detect that failure, strip the
+    // offending column(s), and retry so the session still persists. The
+    // stripped field then rides local-only until the migration lands, at
+    // which point this fallback stops firing. NEVER let an optional column
+    // cause session data loss again.
+    if (error) {
+      const msg = `${error.message || ''} ${error.details || ''}`;
+      const dropDeload = /deload/i.test(msg);
+      const dropProgramId = /program_id/i.test(msg);
+      if (dropDeload || dropProgramId) {
+        const rowsFallback = rows.map((r) => {
+          const copy = { ...r };
+          if (dropDeload) delete copy.deload;
+          if (dropProgramId) delete copy.program_id;
+          return copy;
+        });
+        ({ error } = await supabase.from('bloom_sessions').upsert(rowsFallback, { onConflict: 'id' }));
+      }
     }
     if (error) throw error;
   },
@@ -253,8 +278,15 @@ const pushers = {
       id: m.id, role: m.role, content: m.content,
       context_snapshot: m.context_snapshot || null,
       created_at: m.created_at ? new Date(m.created_at).toISOString() : new Date().toISOString(),
+      program_id: m.programId || null,
     }));
-    const { error } = await supabase.from('wren_chat').upsert(rows, { onConflict: 'id' });
+    let { error } = await supabase.from('wren_chat').upsert(rows, { onConflict: 'id' });
+    // Self-heal: program_id doesn't exist until migration 006 is applied by
+    // hand — see the identical pattern (and rationale) in pushers.sessions.
+    if (error && /program_id/i.test(`${error.message || ''} ${error.details || ''}`)) {
+      const rowsNoProgramId = rows.map(({ program_id, ...rest }) => rest);
+      ({ error } = await supabase.from('wren_chat').upsert(rowsNoProgramId, { onConflict: 'id' }));
+    }
     if (error) throw error;
   },
 
@@ -265,8 +297,31 @@ const pushers = {
       id: p.id, program_json: p.program_json || {},
       active: !!p.active,
       created_at: p.created_at ? new Date(p.created_at).toISOString() : new Date().toISOString(),
+      name: p.name || null,
+      archived: !!p.archived,
+      updated_at: new Date().toISOString(),
     }));
-    const { error } = await supabase.from('wren_program').upsert(rows, { onConflict: 'id' });
+    let { error } = await supabase.from('wren_program').upsert(rows, { onConflict: 'id' });
+    // Self-heal: name/archived/updated_at don't exist until migration 006 is
+    // applied by hand — see the identical pattern (and rationale) in
+    // pushers.sessions. Whichever of these three columns is missing gets
+    // dropped from the retry; the rest still persist.
+    if (error) {
+      const msg = `${error.message || ''} ${error.details || ''}`;
+      const dropName = /\bname\b/i.test(msg);
+      const dropArchived = /archived/i.test(msg);
+      const dropUpdatedAt = /updated_at/i.test(msg);
+      if (dropName || dropArchived || dropUpdatedAt) {
+        const rowsFallback = rows.map((r) => {
+          const copy = { ...r };
+          if (dropName) delete copy.name;
+          if (dropArchived) delete copy.archived;
+          if (dropUpdatedAt) delete copy.updated_at;
+          return copy;
+        });
+        ({ error } = await supabase.from('wren_program').upsert(rowsFallback, { onConflict: 'id' }));
+      }
+    }
     if (error) throw error;
   },
 

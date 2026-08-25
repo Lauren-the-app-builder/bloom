@@ -141,6 +141,9 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
       setsConfig,
       tag: null,
       deload: isDeload,
+      // So the finished session gets tagged with which program it belongs
+      // to (bloom_sessions.program_id) — see recordSession() in BloomApp.jsx.
+      programId: rawProgram?.id || null,
     };
   };
 

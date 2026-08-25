@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronRight, Sparkles, HeartPulse, Palmtree, X } from 'lucide-react';
 import { c, comboLabel } from './tokens';
-import { getActiveProgram, setsForExercise, getSessions, load, isDeloadWeek, isInjuryWeek, isSessionSkipped, getOffWeeks, clearOffWeek } from '../../lib/storage';
+import { getActiveProgram, getProgram, setsForExercise, getSessionsForProgram, load, isDeloadWeek, isInjuryWeek, isSessionSkipped, getOffWeeks, clearOffWeek } from '../../lib/storage';
 import { getCurrentWeekAndMesocycle, labelForWeekKey } from './wrenHelpers';
 
 const MESO_LABELS = [
@@ -61,18 +61,21 @@ function JourneyStat({ value, label, accent }) {
   );
 }
 
-export default function ProgramView() {
-  const rawProgram = getActiveProgram();
+// `programId` is optional — omit it to show the active program (original
+// behavior); pass it to show any specific program (active or shelved), e.g.
+// from ProgramDetailView.
+export default function ProgramView({ programId = null }) {
+  const rawProgram = programId ? getProgram(programId) : getActiveProgram();
   // The program data lives inside program_json (from Supabase schema).
   const program = rawProgram?.program_json || rawProgram || null;
-  const { week: currentWeek, startDate, hasStarted } = getCurrentWeekAndMesocycle(program);
+  const { week: currentWeek, startDate, hasStarted } = getCurrentWeekAndMesocycle(rawProgram);
   const [expandedWeek, setExpandedWeek] = useState(null);
   const [collapsedMeso, setCollapsedMeso] = useState({});
   const [offWeeksBump, setOffWeeksBump] = useState(0);
   void offWeeksBump;
 
   const unit = load('unit', 'kg');
-  const sessionsLog = getSessions().filter(s => !(s.workoutName || '').includes('(past entry)'));
+  const sessionsLog = getSessionsForProgram(rawProgram?.id).filter(s => !(s.workoutName || '').includes('(past entry)'));
   // The logged session (if any) for a given program week + session label,
   // matched by "Session X" name within that week's 7-day window.
   const loggedFor = (weekNum, label) => {
@@ -271,11 +274,11 @@ export default function ProgramView() {
                   const wNum = wk.week_number || mi * 4 + wi + 1;
                   // Deload is opt-in — only weeks Lauren has confirmed
                   // with Wren are marked. No more automatic 4/8/12 rule.
-                  const isDeloadWk = isDeloadWeek(wNum);
+                  const isDeloadWk = isDeloadWeek(wNum, rawProgram?.id);
                   // Injured weeks Lauren flagged with Wren. An injured week
                   // takes visual precedence over deload/current — it's the
                   // most important thing to see about that week at a glance.
-                  const isInjuredWk = isInjuryWeek(wNum);
+                  const isInjuredWk = isInjuryWeek(wNum, rawProgram?.id);
                   const status = isInjuredWk ? 'injured' : isDeloadWk ? 'deload' : weekStatus(wNum, currentWeek);
                   const st = STATUS_STYLES[status];
                   const isExpanded = expandedWeek === wNum;
@@ -323,7 +326,7 @@ export default function ProgramView() {
                           {(Array.isArray(wk.sessions) ? wk.sessions : Object.entries(wk.sessions).map(([k, v]) => ({ label: k, ...v }))).map((sess, si) => {
                             const label = sess.label || sess.name || String.fromCharCode(65 + si); // A, B, C
                             const logged = loggedFor(wNum, label);
-                            const skipped = !logged && isSessionSkipped(wNum, label);
+                            const skipped = !logged && isSessionSkipped(wNum, label, rawProgram?.id);
                             return (
                               <div key={si} style={{ marginBottom: si < (wk.sessions.length || Object.keys(wk.sessions).length) - 1 ? 10 : 0 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
@@ -400,7 +403,7 @@ export default function ProgramView() {
           log; removing one doesn't retroactively un-pause anything already
           resolved by the week-progression math. */}
       {(() => {
-        const offWeeks = Object.entries(getOffWeeks())
+        const offWeeks = Object.entries(getOffWeeks(rawProgram?.id))
           .sort((a, b) => a[0].localeCompare(b[0]));
         if (!offWeeks.length) return null;
         return (
@@ -422,7 +425,7 @@ export default function ProgramView() {
                     {labelForWeekKey(weekKey)} · {entry.reason === 'injury' ? 'Injury' : 'Vacation'}
                   </span>
                   <button
-                    onClick={() => { clearOffWeek(weekKey); setOffWeeksBump(b => b + 1); }}
+                    onClick={() => { clearOffWeek(weekKey, rawProgram?.id); setOffWeeksBump(b => b + 1); }}
                     style={{
                       width: 26, height: 26, borderRadius: '50%', border: 'none',
                       background: c.paper, display: 'flex', alignItems: 'center',

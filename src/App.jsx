@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import BloomApp from './BloomApp';
 import { isSupabaseConfigured } from './lib/supabase';
 import { pullAll, flushQueue, setSuppressPushes } from './lib/sync';
+import { migrateGlobalProgramStateToActiveProgram } from './lib/storage';
 
 // A fresh script load NEVER has an active workout yet — ActiveWorkout hasn't
 // mounted. So any 'bloom:workoutInProgress' flag still set from before is
@@ -55,6 +56,17 @@ export default function App() {
       }
     })();
   }, []);
+
+  // One-time, per-device backfill of the old flat global deload/injury/skip/
+  // schedule-confirmed keys into the active program's own meta — runs once
+  // the first pull has landed (or immediately if Supabase isn't configured)
+  // so it reads real synced data, not a stale pre-pull cache. Safe to call
+  // on every boot: internally guarded by a local marker so it only ever
+  // does work once per device.
+  useEffect(() => {
+    if (isSupabaseConfigured && !syncedOnce) return;
+    migrateGlobalProgramStateToActiveProgram();
+  }, [syncedOnce]);
 
   // Hold the splash until the first pull resolves so BloomApp doesn't render
   // with stale local data and trigger writes that overwrite the server.

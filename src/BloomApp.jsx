@@ -93,11 +93,13 @@ import {
   Image as ImageIcon,
   Scale,
   Zap,
+  ListChecks,
 } from "lucide-react";
-import { useLocalState, recordSession, getSessions, getLastSession, getBaselineSessions, updateSession, deleteSession, load, save, getActiveProgram, getMissedSessions, ensureSessionAOrder, ensureSessionBPulldown, ensureSessionCLegCurl, getWrenNotes, removeWrenNote, clearWrenNotes, getWorkoutDraft, saveWorkoutDraft, clearWorkoutDraft } from "./lib/storage";
+import { useLocalState, recordSession, getSessions, getSessionsForProgram, getLastSession, getBaselineSessions, updateSession, deleteSession, load, save, getActiveProgram, getMissedSessions, ensureSessionAOrder, ensureSessionBPulldown, ensureSessionCLegCurl, getWrenNotes, removeWrenNote, clearWrenNotes, getWorkoutDraft, saveWorkoutDraft, clearWorkoutDraft } from "./lib/storage";
 import { deleteWorkoutRemote } from "./lib/sync";
 import { subscribeToPush, scheduleRestPush, cancelRestPush } from "./lib/push";
 import WrenView from "./components/wren/WrenView";
+import ProgramsView from "./components/wren/ProgramsView";
 import TodayView from "./components/wren/TodayView";
 import NourishView from "./components/wren/NourishView";
 import CardioLog from "./components/wren/CardioLog";
@@ -368,6 +370,13 @@ export default function BloomApp() {
   const [showSchedule, setShowSchedule] = useState(false);
   const [showFocusLift, setShowFocusLift] = useState(false);
   const [showWeek, setShowWeek] = useState(false);
+  // When set, WeekOverview scopes to this one program's sessions instead of
+  // every logged session — set by a program's own History button.
+  const [weekOverviewFilter, setWeekOverviewFilter] = useState(null); // { id, name } | null
+  // Which program the Programs tab should open straight to — set by Today's
+  // 'View program' button so it lands on the active program's detail page
+  // instead of the bare list.
+  const [programsInitialId, setProgramsInitialId] = useState(null);
   const [activeWorkout, setActiveWorkout] = useState(null); // workout being viewed
   // Persisted (not plain useState) so a reload/kill mid-workout still knows
   // which workout to resume ActiveWorkout into — paired with the sets/timer
@@ -391,9 +400,6 @@ export default function BloomApp() {
   const [importHistoryFor, setImportHistoryFor] = useState(null); // workout object to import history for
   const [backfillFor, setBackfillFor] = useState(null); // workout object to log past session for
   const [sessionsBump, setSessionsBump] = useState(0); // re-render trigger when sessions change
-  // Which sub-view to open inside the coach tab (chat | program). Today's
-  // 'View program' button flips this to 'program' before switching tab.
-  const [coachInitialView, setCoachInitialView] = useState('chat');
   const [showLibrary, setShowLibrary] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -522,15 +528,15 @@ export default function BloomApp() {
     }}>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
 
-        {/* Two views: Today + Wren, toggled by bottom nav */}
+        {/* Four views: Today, Nourish, Wren, Programs — toggled by bottom nav */}
         {tab === "home" && (
           <TodayView
             onStartWorkout={(w) => { setInProgress(w); }}
             onStartCardio={(cs) => setCardioInProgress(cs)}
             sessionsBump={sessionsBump}
-            onAskWren={() => { setCoachInitialView('chat'); setTab("coach"); }}
-            onViewProgram={() => { setCoachInitialView('program'); setTab("coach"); }}
-            onOpenHistory={() => setShowWeek(true)}
+            onAskWren={() => { setTab("coach"); }}
+            onViewProgram={() => { setProgramsInitialId(getActiveProgram()?.id || null); setTab("programs"); }}
+            onOpenHistory={() => { setWeekOverviewFilter(null); setShowWeek(true); }}
             onOpenSettings={() => setShowSettings(true)}
             background={todayBackground}
             myWorkouts={myWorkouts}
@@ -541,6 +547,12 @@ export default function BloomApp() {
         {tab === "nourish" && (
           <NourishView onOpenSettings={() => setShowSettings(true)} />
         )}
+        {tab === "programs" && (
+          <ProgramsView
+            initialProgramId={programsInitialId}
+            onOpenHistory={(program) => { setWeekOverviewFilter(program); setShowWeek(true); }}
+          />
+        )}
         {tab === "coach" && (
           <WrenView
             schedule={schedule}
@@ -549,7 +561,7 @@ export default function BloomApp() {
             unit={unit}
             allExercises={allExercises}
             sessionsBump={sessionsBump}
-            initialView={coachInitialView}
+            onOpenPrograms={() => { setProgramsInitialId(null); setTab("programs"); }}
             onOpenSettings={() => setShowSettings(true)}
             onStartWorkout={(w) => { setInProgress(w); setTab("home"); }}
           />
@@ -590,7 +602,14 @@ export default function BloomApp() {
 
         {showLibrary && <LibraryView onClose={() => setShowLibrary(false)} allExercises={allExercises} customExercises={customExercises} setCustomExercises={setCustomExercises} />}
 
-        {showWeek && <WeekOverview onClose={() => setShowWeek(false)} onSessionsChange={() => setSessionsBump(b => b + 1)} />}
+        {showWeek && (
+          <WeekOverview
+            onClose={() => { setShowWeek(false); setWeekOverviewFilter(null); }}
+            onSessionsChange={() => setSessionsBump(b => b + 1)}
+            programId={weekOverviewFilter?.id || null}
+            programName={weekOverviewFilter?.name || null}
+          />
+        )}
 
         {showExport && <ExportDataModal onClose={() => setShowExport(false)} />}
 
@@ -707,7 +726,7 @@ export default function BloomApp() {
           />
         )}
 
-        {/* Bottom nav — Today + Wren */}
+        {/* Bottom nav — Today, Nourish, Programs, Wren */}
         {!inProgress && !cardioInProgress && (
           <nav style={{
             display: "flex", justifyContent: "space-around", alignItems: "center",
@@ -716,21 +735,28 @@ export default function BloomApp() {
             WebkitBackdropFilter: "blur(20px)", flexShrink: 0,
           }}>
             <button onClick={() => setTab("home")} style={{
-              background: "none", border: "none", cursor: "pointer", padding: "4px 20px",
+              background: "none", border: "none", cursor: "pointer", padding: "4px 14px",
               display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
             }}>
               <Dumbbell size={20} color={tab === "home" ? c.rosedeep : c.muted} strokeWidth={tab === "home" ? 2.5 : 2} />
               <span style={{ fontSize: 10, fontWeight: tab === "home" ? 700 : 500, color: tab === "home" ? c.rosedeep : c.muted }}>Today</span>
             </button>
             <button onClick={() => setTab("nourish")} style={{
-              background: "none", border: "none", cursor: "pointer", padding: "4px 20px",
+              background: "none", border: "none", cursor: "pointer", padding: "4px 14px",
               display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
             }}>
               <Heart size={20} color={tab === "nourish" ? c.rosedeep : c.muted} strokeWidth={tab === "nourish" ? 2.5 : 2} />
               <span style={{ fontSize: 10, fontWeight: tab === "nourish" ? 700 : 500, color: tab === "nourish" ? c.rosedeep : c.muted }}>Nourish</span>
             </button>
+            <button onClick={() => { setProgramsInitialId(null); setTab("programs"); }} style={{
+              background: "none", border: "none", cursor: "pointer", padding: "4px 14px",
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+            }}>
+              <ListChecks size={20} color={tab === "programs" ? c.rosedeep : c.muted} strokeWidth={tab === "programs" ? 2.5 : 2} />
+              <span style={{ fontSize: 10, fontWeight: tab === "programs" ? 700 : 500, color: tab === "programs" ? c.rosedeep : c.muted }}>Programs</span>
+            </button>
             <button onClick={() => setTab("coach")} style={{
-              background: "none", border: "none", cursor: "pointer", padding: "4px 20px",
+              background: "none", border: "none", cursor: "pointer", padding: "4px 14px",
               display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
             }}>
               <Sparkles size={20} color={tab === "coach" ? c.rosedeep : c.muted} strokeWidth={tab === "coach" ? 2.5 : 2} />
@@ -2003,6 +2029,10 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
       exercises: exMap,
       durationSec: elapsed,
       finishedAt,
+      // Which program this session belongs to (set on Wren-program-derived
+      // workouts by TodayView's buildWorkoutFromSession) — absent/null for
+      // custom myWorkouts and cardio, which aren't tied to any program.
+      programId: workout.programId || null,
       // Rides along on the lift session — keeps "HIIT happened after this
       // lift" as one record so history + Today can render the ⚡ glyph
       // without joining across sessions. Omitted entirely when not done.
@@ -3169,10 +3199,16 @@ function inputStyle(done) {
 }
 
 // ---------- SESSIONS OVERVIEW ----------
-function WeekOverview({ onClose, onSessionsChange }) {
+function WeekOverview({ onClose, onSessionsChange, programId = null, programName = null }) {
   const [view, setView] = useState("month");
   const [bump, setBump] = useState(0);
-  const sessions = useMemo(() => getSessions().slice().sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0)), [bump]);
+  // Scoped to one program's sessions when programId is given (opened from a
+  // program's own History button); otherwise every session, unfiltered
+  // (Home's global History button keeps its original behavior).
+  const sessions = useMemo(
+    () => (programId ? getSessionsForProgram(programId) : getSessions()).slice().sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0)),
+    [bump, programId]
+  );
   const [editing, setEditing] = useState(null); // session object being edited
   const refresh = () => { setBump(b => b + 1); if (onSessionsChange) onSessionsChange(); };
   const startOfWeek = (d) => {
@@ -3220,7 +3256,7 @@ function WeekOverview({ onClose, onSessionsChange }) {
         <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, color: c.charcoal, fontSize: 14, fontWeight: 500 }}>
           <ChevronLeft size={20} /> Back
         </button>
-        <p style={{ fontSize: 13, fontWeight: 600, margin: 0 }}>Sessions</p>
+        <p style={{ fontSize: 13, fontWeight: 600, margin: 0 }}>{programName ? `${programName} history` : 'Sessions'}</p>
         <div style={{ width: 40 }} />
       </div>
 

@@ -1,6 +1,6 @@
 // Pure utility functions for the Wren coaching system.
 
-import { load, isDeloadWeek, getDeloadWeeks, isInjuryWeek, getInjuryWeeks, getSkippedSessionsForWeek, getWrenNotes, getCalorieGoal, getCurrentWeight, getWeeklyAvgWeight, getWeeklyAvgSeries, getWeightChange, getWeightLog, getNourishPhase, getCardioSessionsForWeek, getOffWeek, weekKeyFor } from '../../lib/storage';
+import { load, isDeloadWeek, getDeloadWeeks, isInjuryWeek, getInjuryWeeks, getSkippedSessionsForWeek, getWrenNotes, getCalorieGoal, getCurrentWeight, getWeeklyAvgWeight, getWeeklyAvgSeries, getWeightChange, getWeightLog, getNourishPhase, getCardioSessionsForWeek, getOffWeek, weekKeyFor, getProgramStartDate, getPrograms } from '../../lib/storage';
 import { comboKey, comboLabel } from './tokens';
 
 // ---------- Plateau detection ----------
@@ -43,6 +43,7 @@ export function computeWeeklyMissesForProgram(program, sessions, { now = new Dat
     return { isCheckDay: false, scheduledCount: 0, loggedCount: 0, missedCount: 0 };
   }
 
+  const programId = program?.id || null;
   const programData = program?.program_json || program || null;
   const { week: currentWeek, hasStarted, offWeekReason } = getCurrentWeekAndMesocycle(program);
   if (!hasStarted || !programData?.weeks?.length || currentWeek <= 0) {
@@ -74,10 +75,10 @@ export function computeWeeklyMissesForProgram(program, sessions, { now = new Dat
   // punishment system all stay quiet. Matches Wren's rule that injury never
   // counts toward a punishment. A calendar off week (injury or vacation)
   // gets the same treatment.
-  const injured = isInjuryWeek(currentWeek) || !!offWeekReason;
+  const injured = isInjuryWeek(currentWeek, programId) || !!offWeekReason;
   // Sessions Lauren explicitly skipped this week are intentional, not misses —
   // subtract them from the shortfall so an acknowledged skip doesn't nag.
-  const skippedCount = getSkippedSessionsForWeek(currentWeek).length;
+  const skippedCount = getSkippedSessionsForWeek(currentWeek, programId).length;
   const missedCount = injured ? 0 : Math.max(0, scheduledCount - loggedCount - skippedCount);
   return { isCheckDay, scheduledCount, loggedCount, skippedCount, missedCount, injured, offWeekReason, weekNumber: currentWeek };
 }
@@ -121,23 +122,28 @@ export function computeMissedSessions(schedule, workouts, sessions, lookbackDays
 }
 
 // ---------- Week / mesocycle computation ----------
-// Fixed program start date. Wren's generated startDate is often wrong (places
-// the user 12 weeks deep), so we ignore the data and use this canonical date.
-// TODO: make this user-configurable via settings.
-const PROGRAM_START = new Date('2026-05-25T00:00:00');
+// A program's start date is the date of its first ever logged session
+// (see getProgramStartDate in storage.js) — not creation/activation time,
+// and not Wren's often-wrong generated startDate. Per-program: each
+// program tracks its own start, deload/injury weeks, and off weeks, keyed
+// off `rawProgram.id` (present on anything returned by getActiveProgram()/
+// getProgram()).
 
-// Count of calendar weeks, starting at PROGRAM_START, that have elapsed as of
+// Count of calendar weeks, starting at `startDate`, that have elapsed as of
 // `now` (0 = the starting week itself).
 function calendarWeekIndex(startDate, now) {
   return Math.max(0, Math.floor((now - startDate) / (7 * 86400000)));
 }
 
 export function getCurrentWeekAndMesocycle(rawProgram) {
+  const programId = rawProgram?.id || null;
   const program = rawProgram?.program_json || rawProgram || null;
-  const startDate = PROGRAM_START;
+  const startDate = getProgramStartDate(programId);
   const now = new Date();
-  const offWeekReason = getOffWeek(weekKeyFor(now));
-  if (!program?.weeks?.length) {
+  const offWeekReason = getOffWeek(weekKeyFor(now), programId);
+  // Not started until something's actually been logged against this
+  // program — no start date yet means no training week to report.
+  if (!program?.weeks?.length || !startDate) {
     return { week: 0, mesocycle: 0, phase: 'none', isDeload: false, hasStarted: false, startDate, offWeekReason };
   }
   const calIndex = calendarWeekIndex(startDate, now);
@@ -149,7 +155,7 @@ export function getCurrentWeekAndMesocycle(rawProgram) {
   let pausedBefore = 0;
   for (let k = 0; k < calIndex; k++) {
     const wkDate = new Date(startDate.getTime() + k * 7 * 86400000);
-    if (getOffWeek(weekKeyFor(wkDate))) pausedBefore++;
+    if (getOffWeek(weekKeyFor(wkDate), programId)) pausedBefore++;
   }
   const trainingIndex = calIndex - pausedBefore;
   const clamped = Math.min(Math.max(0, trainingIndex), program.weeks.length - 1);
@@ -160,13 +166,32 @@ export function getCurrentWeekAndMesocycle(rawProgram) {
     phase: 'normal',
     // Deload is opt-in now — only true for weeks Lauren has confirmed
     // with Wren (stored via addDeloadWeek).
-    isDeload: isDeloadWeek(weekNum),
+    isDeload: isDeloadWeek(weekNum, programId),
     hasStarted: now >= startDate,
     startDate,
     // 'injury' | 'vacation' | null — whether THIS calendar week (not the
     // training week) is marked off. See setOffWeek/getOffWeek in storage.js.
     offWeekReason,
   };
+}
+
+// Plain-text rundown of one program's days/exercises, from its first week
+// (session content is uniform across weeks in this app's model — see
+// editProgramSession/addProgramSession in storage.js). Used so api/wren.js
+// can describe *this* program instead of a hardcoded one when Wren is
+// scoped to a specific program (see ProgramChat).
+export function formatProgramSummary(rawProgram) {
+  const program = rawProgram?.program_json || rawProgram || null;
+  const week = program?.weeks?.[0];
+  if (!week?.sessions) return '';
+  const items = Array.isArray(week.sessions)
+    ? week.sessions
+    : Object.entries(week.sessions).map(([k, s]) => ({ session_label: s?.session_label || k, ...s }));
+  return items.map(sess => {
+    const label = sess.session_label || sess.label || '?';
+    const exList = (sess.exercises || []).map(e => `${e.name} (${e.reps || '?'} reps)`).join(', ');
+    return `Session ${label}: ${exList || 'no exercises yet'}`;
+  }).join('\n');
 }
 
 // Human label for a Monday-anchored week key, e.g. "2026-07-20" -> "Jul 20 – Jul 26".
@@ -178,11 +203,17 @@ export function labelForWeekKey(weekKey) {
 }
 
 // ---------- Build enriched context for API calls ----------
-export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program, missedSessions }) {
+// `scoped: true` (only ever passed by ProgramChat) tells the API this
+// conversation is about a specific, possibly non-default program, so it
+// swaps in a generic program-identity block instead of Lauren's hardcoded
+// finalized program — see programContextBlock in api/wren.js. The general
+// Chat tab never passes this, so its behavior is unchanged.
+export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program, missedSessions, scoped = false }) {
   const allExNames = new Set();
   myWorkouts.forEach(w => w.exercises?.forEach(e => allExNames.add(e)));
   const plateauFlags = detectPlateaus(sessions, [...allExNames]);
 
+  const programId = program?.id || null;
   const { week, mesocycle, phase, isDeload } = getCurrentWeekAndMesocycle(program);
 
   // Count missed sessions in last 28 days.
@@ -193,11 +224,11 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
   // She uses it to know how the current week is tracking.
   const weeklyMiss = computeWeeklyMissesForProgram(program, sessions, { force: true });
   // Confirmed deload weeks — Lauren has explicitly agreed to these.
-  const deloadWeeks = getDeloadWeeks();
+  const deloadWeeks = getDeloadWeeks(programId);
   // Weeks Lauren flagged as injured — she trained reduced/not at all.
-  const injuryWeeks = getInjuryWeeks();
+  const injuryWeeks = getInjuryWeeks(programId);
   // Sessions Lauren has intentionally skipped this program week (A/B/C).
-  const skippedThisWeek = getSkippedSessionsForWeek(week);
+  const skippedThisWeek = getSkippedSessionsForWeek(week, programId);
   // Long-term memory — facts Wren has saved with the remember action.
   const wrenNotes = getWrenNotes();
 
@@ -258,6 +289,15 @@ export function buildWrenContext({ schedule, myWorkouts, sessions, unit, program
     currentMesocycle: mesocycle,
     phase,
     isDeload,
+    // Only sent when this is a program-scoped chat (see the `scoped` param
+    // above) — the general Chat tab sends none of these, unchanged from
+    // before multi-program support.
+    programId: scoped ? programId : null,
+    programName: scoped ? (program?.name || null) : null,
+    programSummary: scoped ? formatProgramSummary(program) : '',
+    otherProgramNames: scoped
+      ? getPrograms().filter(p => p.id !== programId).map(p => p.name).filter(Boolean)
+      : [],
     plateauFlags,
     liftBests,
     bandsBestReps,
