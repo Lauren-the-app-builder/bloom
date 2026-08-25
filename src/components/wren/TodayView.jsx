@@ -1218,10 +1218,14 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
           one done right now). Writes a real logged session via
           recordSession so it shows up in history like anything else. */}
       {hasStarted && !offWeekReason && (() => {
-        const cardioDoneCount = getSessions().filter(s =>
-          Number(s.finishedAt) >= thisCalendarWeekStart &&
-          /^Cardio:/i.test(s.workoutName || '')
-        ).length;
+        const cardioLoggedThisWeek = getSessions()
+          .filter(s => Number(s.finishedAt) >= thisCalendarWeekStart && /^Cardio:/i.test(s.workoutName || ''))
+          .sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0))
+          .map(s => ({
+            finishedAt: s.finishedAt,
+            name: (/^Cardio:\s*(.+)$/i.exec(s.workoutName || '')?.[1] || 'Session').trim(),
+          }));
+        const cardioDoneCount = cardioLoggedThisWeek.length;
         const goal = 3;
         const message = justLoggedCardio
           ? 'Nice work! 🎉'
@@ -1287,6 +1291,30 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                 ))}
               </div>
             </div>
+
+            {cardioLoggedThisWeek.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 12 }}>
+                {cardioLoggedThisWeek.map((cs, i) => (
+                  <div
+                    key={`${cs.finishedAt}_${i}`}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 7,
+                      padding: '7px 10px', borderRadius: 10, background: c.paper,
+                    }}
+                  >
+                    <div style={{
+                      width: 16, height: 16, borderRadius: '50%', background: '#4a8a5a',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    }}>
+                      <Check size={9} color="white" strokeWidth={3} />
+                    </div>
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: c.charcoal, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {cs.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {!loggingCardio ? (
               <button
