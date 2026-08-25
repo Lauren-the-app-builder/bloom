@@ -1,112 +1,204 @@
 import React, { useState } from 'react';
-import { ChevronRight, Sparkles, HeartPulse, Palmtree, X } from 'lucide-react';
-import { c, comboLabel } from './tokens';
-import { getActiveProgram, getProgram, setsForExercise, getSessionsForProgram, load, isDeloadWeek, isInjuryWeek, isSessionSkipped, getOffWeeks, clearOffWeek } from '../../lib/storage';
-import { getCurrentWeekAndMesocycle, labelForWeekKey } from './wrenHelpers';
+import { Sparkles, Pencil, Check, X, Plus, Trash2 } from 'lucide-react';
+import { c } from './tokens';
+import {
+  getActiveProgram, getProgram, setsForExercise, getRestOverride, setRestOverride, clearRestOverride,
+  editProgramSession,
+} from '../../lib/storage';
+import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 
-const MESO_LABELS = [
-  { title: 'Mesocycle 1', subtitle: 'Foundation' },
-  { title: 'Mesocycle 2', subtitle: 'Build' },
-  { title: 'Mesocycle 3', subtitle: 'Peak' },
-];
-
-function weekStatus(weekNum, currentWeek) {
-  if (weekNum < currentWeek) return 'done';
-  if (weekNum === currentWeek) return 'current';
-  return 'upcoming';
+// Every session in a program's structure, read from its first week — every
+// week is kept structurally identical by editProgramSession/
+// addProgramSession, so week 1 IS the program as far as editing goes.
+function collectSessions(program) {
+  const week = program?.weeks?.[0];
+  if (!week?.sessions) return [];
+  return Array.isArray(week.sessions)
+    ? week.sessions.map((s, i) => ({ ...s, session_label: s.session_label || s.label || String.fromCharCode(65 + i) }))
+    : Object.entries(week.sessions).map(([k, s]) => ({ ...s, session_label: s.session_label || k }));
 }
 
-const STATUS_STYLES = {
-  done: { background: '#e6f5ea', color: '#2e7d4a', label: 'Done' },
-  current: { background: c.blush, color: c.white, label: 'Current' },
-  upcoming: { background: c.line, color: c.muted, label: 'Upcoming' },
-  deload: { background: '#ede4f7', color: '#7040A0', label: 'Deload' },
-  injured: { background: '#fce4d6', color: '#B0511F', label: 'Injured' },
-};
+function FieldLabel({ children }) {
+  return <div style={{ fontSize: 9, fontWeight: 700, color: c.muted, marginBottom: 2, letterSpacing: 0.4 }}>{children}</div>;
+}
 
-// Phase labels for each mesocycle, used by the Journey card.
-const PHASE_FOR_WEEK = (wk) => {
-  if (wk <= 4) return 'Foundation';
-  if (wk <= 8) return 'Build';
-  return 'Peak';
-};
-
-// Single stat tile inside the Journey card. Hoisted out of the parent so it
-// keeps a stable component identity across renders.
-function JourneyStat({ value, label, accent }) {
+function CommitInput({ value, onChange, onCommit, placeholder, width, textAlign = 'left' }) {
   return (
-    <div style={{
-      flex: 1, minWidth: 0,
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-      padding: '6px 4px',
-    }}>
-      <div style={{
-        fontSize: 17, fontWeight: 800, color: 'white', letterSpacing: -0.3,
-        textShadow: '0 1px 6px rgba(80,40,90,0.45)',
-        display: 'flex', alignItems: 'baseline', gap: 1,
-      }}>
-        {value}
-        {accent && (
-          <span style={{ fontSize: 11, fontWeight: 700, opacity: 0.85, marginLeft: 1 }}>{accent}</span>
+    <input
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={onCommit}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+      placeholder={placeholder}
+      style={{
+        width, padding: '7px 9px', borderRadius: 8, border: `1px solid ${c.line}`,
+        fontSize: 12, fontFamily: 'inherit', boxSizing: 'border-box', textAlign,
+      }}
+    />
+  );
+}
+
+// One exercise row: name (tap to rename), reps, sets, rest — each commits
+// on blur/Enter. Name/reps/sets go through editProgramSession (they're part
+// of the program's own structure); rest is a standalone override (see
+// getRestOverride/setRestOverride in storage.js), same idea as sets but
+// with no "canonical" pattern to fall back to, so it's blank until set.
+function ExerciseRow({ programId, sessionLabel, exercise, onChanged }) {
+  const [editingName, setEditingName] = useState(false);
+  const [name, setName] = useState(exercise.name);
+  const [reps, setReps] = useState(exercise.reps || '');
+  const [sets, setSets] = useState(String(setsForExercise(exercise.name, false)));
+  const [rest, setRest] = useState(String(getRestOverride(exercise.name) || ''));
+
+  const commitName = () => {
+    setEditingName(false);
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === exercise.name) { setName(exercise.name); return; }
+    editProgramSession({ session_label: sessionLabel, swap_from: exercise.name, swap_to: trimmed }, programId);
+    onChanged();
+  };
+  const commitReps = () => {
+    const trimmed = reps.trim();
+    if (trimmed && trimmed !== (exercise.reps || '')) {
+      editProgramSession({ session_label: sessionLabel, exercise: exercise.name, reps: trimmed }, programId);
+      onChanged();
+    }
+  };
+  const commitSets = () => {
+    const n = Number(sets);
+    if (Number.isFinite(n) && n > 0) {
+      editProgramSession({ session_label: sessionLabel, exercise: exercise.name, sets: n }, programId);
+      onChanged();
+    }
+  };
+  const commitRest = () => {
+    const trimmed = rest.trim();
+    if (!trimmed) { clearRestOverride(exercise.name); onChanged(); return; }
+    const n = Number(trimmed);
+    if (Number.isFinite(n) && n > 0) { setRestOverride(exercise.name, n); onChanged(); }
+  };
+  const remove = () => {
+    editProgramSession({ session_label: sessionLabel, remove_exercise: exercise.name }, programId);
+    onChanged();
+  };
+
+  return (
+    <div style={{ padding: '10px 0', borderBottom: `1px solid ${c.line}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        {editingName ? (
+          <input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={commitName}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+            style={{ flex: 1, fontSize: 13, fontWeight: 700, padding: '6px 8px', borderRadius: 8, border: `1px solid ${c.line}`, fontFamily: 'inherit', boxSizing: 'border-box' }}
+          />
+        ) : (
+          <button
+            onClick={() => setEditingName(true)}
+            style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 700, color: c.charcoal, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exercise.name}</span>
+            <Pencil size={10} color={c.muted} style={{ flexShrink: 0 }} />
+          </button>
         )}
+        <button
+          onClick={remove}
+          style={{ width: 26, height: 26, borderRadius: '50%', border: 'none', background: c.paper, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+        >
+          <Trash2 size={11} color={c.muted} />
+        </button>
       </div>
-      <div style={{
-        fontSize: 9.5, fontWeight: 600, color: 'rgba(255,255,255,0.92)',
-        textShadow: '0 1px 4px rgba(80,40,90,0.4)',
-        letterSpacing: 0.2, textAlign: 'center', lineHeight: 1.2,
-      }}>
-        {label}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <FieldLabel>Reps</FieldLabel>
+          <CommitInput value={reps} onChange={setReps} onCommit={commitReps} placeholder="8-10" width="100%" />
+        </div>
+        <div style={{ flex: 1 }}>
+          <FieldLabel>Sets</FieldLabel>
+          <CommitInput value={sets} onChange={setSets} onCommit={commitSets} placeholder="3" width="100%" textAlign="center" />
+        </div>
+        <div style={{ flex: 1 }}>
+          <FieldLabel>Rest (s)</FieldLabel>
+          <CommitInput value={rest} onChange={setRest} onCommit={commitRest} placeholder="90" width="100%" textAlign="center" />
+        </div>
       </div>
+    </div>
+  );
+}
+
+function AddExerciseRow({ programId, sessionLabel, onAdded }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [reps, setReps] = useState('10');
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        style={{
+          marginTop: 10, display: 'flex', alignItems: 'center', gap: 5,
+          background: 'none', border: `1px dashed ${c.line}`, borderRadius: 10,
+          padding: '8px 12px', cursor: 'pointer', fontSize: 11, fontWeight: 600,
+          color: c.muted, fontFamily: 'inherit',
+        }}
+      >
+        <Plus size={12} /> Add exercise
+      </button>
+    );
+  }
+
+  const save = () => {
+    const trimmed = name.trim();
+    if (!trimmed) { setOpen(false); return; }
+    editProgramSession({ session_label: sessionLabel, add_exercise: trimmed, reps: reps.trim() || '10' }, programId);
+    setName(''); setReps('10'); setOpen(false);
+    onAdded();
+  };
+
+  return (
+    <div style={{ display: 'flex', gap: 6, marginTop: 10, alignItems: 'center' }}>
+      <input
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Exercise name"
+        style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: `1px solid ${c.line}`, fontSize: 12, fontFamily: 'inherit', boxSizing: 'border-box' }}
+      />
+      <input
+        value={reps}
+        onChange={(e) => setReps(e.target.value)}
+        placeholder="reps"
+        style={{ width: 56, padding: '8px 6px', borderRadius: 8, border: `1px solid ${c.line}`, fontSize: 12, fontFamily: 'inherit', boxSizing: 'border-box', textAlign: 'center' }}
+      />
+      <button onClick={save} style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: c.rosedeep, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+        <Check size={13} color="white" />
+      </button>
+      <button onClick={() => setOpen(false)} style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: c.paper, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+        <X size={13} color={c.muted} />
+      </button>
     </div>
   );
 }
 
 // `programId` is optional — omit it to show the active program (original
 // behavior); pass it to show any specific program (active or shelved), e.g.
-// from ProgramDetailView.
+// from ProgramDetailView. Deliberately basic: just sessions and exercises,
+// each easy to edit by hand or via Wren. No mesocycles, no progress bar, no
+// projected finish date, no per-week logged-set history — that's what the
+// History button is for.
 export default function ProgramView({ programId = null }) {
   const rawProgram = programId ? getProgram(programId) : getActiveProgram();
-  // The program data lives inside program_json (from Supabase schema).
   const program = rawProgram?.program_json || rawProgram || null;
-  const { week: currentWeek, startDate, hasStarted } = getCurrentWeekAndMesocycle(rawProgram);
-  const [expandedWeek, setExpandedWeek] = useState(null);
-  const [collapsedMeso, setCollapsedMeso] = useState({});
-  const [offWeeksBump, setOffWeeksBump] = useState(0);
-  void offWeeksBump;
+  const { week: currentWeek, hasStarted } = getCurrentWeekAndMesocycle(rawProgram);
+  const [bump, setBump] = useState(0);
+  void bump;
+  const refresh = () => setBump(b => b + 1);
 
-  const unit = load('unit', 'kg');
-  const sessionsLog = getSessionsForProgram(rawProgram?.id).filter(s => !(s.workoutName || '').includes('(past entry)'));
-  // The logged session (if any) for a given program week + session label,
-  // matched by "Session X" name within that week's 7-day window.
-  const loggedFor = (weekNum, label) => {
-    if (!startDate) return null;
-    const start = startDate.getTime() + (weekNum - 1) * 7 * 86400000;
-    const end = start + 7 * 86400000;
-    const matches = sessionsLog.filter(s => {
-      const m = /^Session\s+([A-Za-z])/.exec(s.workoutName || '');
-      return m && m[1].toUpperCase() === String(label).toUpperCase()
-        && Number(s.finishedAt) >= start && Number(s.finishedAt) < end;
-    });
-    if (!matches.length) return null;
-    return matches.sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0))[0];
-  };
-  // All logged sets for an exercise in a session (in the order performed).
-  // Matches case-insensitively and trims whitespace so program/log names
-  // don't need to agree exactly on capitalisation (e.g. "Straight arm
-  // pulldown" vs "Straight Arm Pulldown" still resolve to the same logged
-  // sets).
-  const loggedSets = (loggedSession, exName) => {
-    if (!loggedSession?.exercises || !exName) return null;
-    const target = String(exName).toLowerCase().trim();
-    for (const [name, setsArr] of Object.entries(loggedSession.exercises)) {
-      if (String(name).toLowerCase().trim() === target && Array.isArray(setsArr) && setsArr.length) {
-        return setsArr;
-      }
-    }
-    return null;
-  };
+  const sessions = collectSessions(program);
 
-  if (!program || !program.weeks?.length) {
+  if (!sessions.length) {
     return (
       <div style={{
         flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -119,327 +211,40 @@ export default function ProgramView({ programId = null }) {
           <Sparkles size={24} color={c.muted} />
         </div>
         <div style={{ fontSize: 14, fontWeight: 600, color: c.charcoal, marginBottom: 6 }}>
-          No program yet
+          No days yet
         </div>
         <div style={{ fontSize: 12, color: c.muted, maxWidth: 220 }}>
-          Chat with Wren to create your program
+          Add a day above, or ask Wren to build this program
         </div>
       </div>
     );
   }
 
-  // Group weeks by mesocycle (4 weeks each)
-  const mesocycles = [0, 1, 2].map(mi => {
-    const start = mi * 4;
-    return program.weeks.slice(start, start + 4);
-  });
-
-  function toggleMeso(idx) {
-    setCollapsedMeso(prev => ({ ...prev, [idx]: !prev[idx] }));
-  }
-
-  // ----- Journey stats -----
-  const totalWeeks = program.weeks.length || 12;
-  // Sessions this program week vs. total scheduled for this week.
-  const weekIdx = Math.min(Math.max(0, currentWeek - 1), program.weeks.length - 1);
-  const currentWeekData = program.weeks[weekIdx];
-  const scheduledThisWeek = currentWeekData?.sessions?.length || 0;
-  // Count UNIQUE session labels (A/B/C) — counting raw records would
-  // double-count duplicate logs and inflate the "X of N" tile (TodayView
-  // has the same fix).
-  const sessionsThisWeek = (() => {
-    if (!startDate || !hasStarted) return 0;
-    const weekStart = startDate.getTime() + (currentWeek - 1) * 7 * 86400000;
-    const labels = new Set();
-    for (const s of sessionsLog) {
-      if (Number(s.finishedAt) < weekStart) continue;
-      if ((s.workoutName || '').includes('(past entry)')) continue;
-      const m = /^Session\s+([A-Za-z])/.exec(s.workoutName || '');
-      if (m) labels.add(m[1].toUpperCase());
-    }
-    return labels.size;
-  })();
-  // Progress %: clamp to [0, 100], based on currentWeek / total.
-  const progressPct = hasStarted
-    ? Math.max(0, Math.min(100, Math.round((currentWeek / totalWeeks) * 100)))
-    : 0;
-  // Estimated finish: startDate + totalWeeks * 7 days.
-  const finishDate = (() => {
-    if (!startDate) return null;
-    const d = new Date(startDate);
-    d.setDate(d.getDate() + totalWeeks * 7);
-    return d;
-  })();
-  const finishLabel = finishDate
-    ? finishDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    : '—';
-  const phaseLabel = PHASE_FOR_WEEK(currentWeek);
-
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
-      {/* Your Journey — sunset card with computed program stats. Sits at
-          the top of the Program screen as the anchor for the page. */}
-      {hasStarted && (
-        <div style={{
-          marginBottom: 16,
-          borderRadius: 22, overflow: 'hidden',
-          position: 'relative',
-          backgroundImage: 'url(/sunset.png)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          boxShadow: '0 12px 28px rgba(180,140,200,0.22)',
+      <div style={{ fontSize: 12, fontWeight: 600, color: c.muted, marginBottom: 14 }}>
+        {hasStarted ? `${currentWeek} week${currentWeek === 1 ? '' : 's'} of these workouts` : 'Not started yet'}
+      </div>
+      {sessions.map(sess => (
+        <div key={sess.session_label} style={{
+          marginBottom: 16, background: c.white, border: `1px solid ${c.line}`,
+          borderRadius: 14, padding: '12px 14px',
         }}>
-          {/* Soft scrim so text reads against the bright sky. */}
-          <div style={{
-            position: 'absolute', inset: 0,
-            background: 'linear-gradient(180deg, rgba(80,50,90,0.05) 0%, rgba(80,50,90,0.28) 100%)',
-            pointerEvents: 'none',
-          }} />
-          <div style={{ position: 'relative', padding: '18px 18px 16px' }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4,
-            }}>
-              <Sparkles size={11} color="white" style={{ filter: 'drop-shadow(0 1px 3px rgba(80,40,90,0.4))' }} />
-              <span style={{
-                fontSize: 9.5, fontWeight: 800, letterSpacing: 1.4,
-                color: 'white', textTransform: 'uppercase',
-                textShadow: '0 1px 4px rgba(80,40,90,0.4)',
-              }}>
-                Your Journey
-              </span>
-            </div>
-            <div style={{
-              fontSize: 22, fontWeight: 800, color: 'white', letterSpacing: -0.4,
-              textShadow: '0 2px 8px rgba(80,40,90,0.4)',
-            }}>
-              Week {currentWeek} of {totalWeeks}
-            </div>
-            <div style={{
-              fontSize: 12, color: 'rgba(255,255,255,0.92)', marginTop: 2, fontWeight: 500,
-              textShadow: '0 1px 6px rgba(80,40,90,0.4)',
-            }}>
-              {phaseLabel} phase · {progressPct}% complete
-            </div>
-
-            <div style={{
-              display: 'flex', alignItems: 'stretch', gap: 4,
-              marginTop: 14, paddingTop: 12,
-              borderTop: '1px solid rgba(255,255,255,0.25)',
-            }}>
-              <JourneyStat
-                value={sessionsThisWeek}
-                accent={scheduledThisWeek ? `/${scheduledThisWeek}` : null}
-                label="Sessions"
-              />
-              <JourneyStat value={progressPct} accent="%" label="Progress" />
-              <JourneyStat value={finishLabel} label="Est. finish" />
-            </div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: c.charcoal, marginBottom: 2 }}>
+            Session {sess.session_label}
           </div>
+          {(sess.exercises || []).map((ex, i) => (
+            <ExerciseRow
+              key={`${ex.name}_${i}`}
+              programId={rawProgram?.id}
+              sessionLabel={sess.session_label}
+              exercise={ex}
+              onChanged={refresh}
+            />
+          ))}
+          <AddExerciseRow programId={rawProgram?.id} sessionLabel={sess.session_label} onAdded={refresh} />
         </div>
-      )}
-
-      {mesocycles.map((weeks, mi) => {
-        if (!weeks.length) return null;
-        const isCollapsed = collapsedMeso[mi];
-        const label = MESO_LABELS[mi];
-
-        return (
-          <div key={mi} style={{ marginBottom: 16 }}>
-            {/* Mesocycle header */}
-            <button
-              onClick={() => toggleMeso(mi)}
-              style={{
-                width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                padding: '10px 12px', borderRadius: 14, border: 'none', cursor: 'pointer',
-                background: c.paper, fontFamily: 'inherit',
-              }}
-            >
-              <ChevronRight
-                size={16}
-                color={c.charcoal}
-                style={{ transform: isCollapsed ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.15s ease' }}
-              />
-              <span style={{ fontSize: 14, fontWeight: 700, color: c.charcoal }}>
-                {label.title}
-              </span>
-              <span style={{ fontSize: 12, color: c.muted }}>
-                — {label.subtitle}
-              </span>
-            </button>
-
-            {/* Weeks */}
-            {!isCollapsed && (
-              <div style={{ marginTop: 6 }}>
-                {weeks.map((wk, wi) => {
-                  const wNum = wk.week_number || mi * 4 + wi + 1;
-                  // Deload is opt-in — only weeks Lauren has confirmed
-                  // with Wren are marked. No more automatic 4/8/12 rule.
-                  const isDeloadWk = isDeloadWeek(wNum, rawProgram?.id);
-                  // Injured weeks Lauren flagged with Wren. An injured week
-                  // takes visual precedence over deload/current — it's the
-                  // most important thing to see about that week at a glance.
-                  const isInjuredWk = isInjuryWeek(wNum, rawProgram?.id);
-                  const status = isInjuredWk ? 'injured' : isDeloadWk ? 'deload' : weekStatus(wNum, currentWeek);
-                  const st = STATUS_STYLES[status];
-                  const isExpanded = expandedWeek === wNum;
-
-                  return (
-                    <div key={wNum} style={{ marginBottom: 4 }}>
-                      <button
-                        onClick={() => setExpandedWeek(isExpanded ? null : wNum)}
-                        style={{
-                          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                          padding: '10px 14px', borderRadius: 12, border: `1px solid ${c.line}`,
-                          background: c.white, cursor: 'pointer', fontFamily: 'inherit',
-                        }}
-                      >
-                        <span style={{ fontSize: 13, fontWeight: 600, color: c.charcoal, minWidth: 56 }}>
-                          Week {wNum}
-                        </span>
-                        <span style={{ fontSize: 12, color: c.muted, flex: 1, textAlign: 'left' }}>
-                          {wk.phase || ''}
-                        </span>
-                        <span style={{
-                          fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 999,
-                          background: st.background, color: st.color,
-                        }}>
-                          {st.label}
-                        </span>
-                      </button>
-
-                      {/* Expanded week detail */}
-                      {isExpanded && wk.sessions && (
-                        <div style={{
-                          margin: '4px 0 8px', padding: '12px 14px', borderRadius: 12,
-                          background: c.paper, border: `1px solid ${c.line}`,
-                        }}>
-                          {isInjuredWk && (
-                            <div style={{ fontSize: 11, fontWeight: 600, color: '#B0511F', background: '#fce4d6', borderRadius: 8, padding: '6px 10px', marginBottom: 10, lineHeight: 1.4 }}>
-                              🩹 Injured week — you trained around an injury. Reduced sessions here are expected, not a miss.
-                            </div>
-                          )}
-                          {isDeloadWk && (
-                            <div style={{ fontSize: 11, fontWeight: 600, color: '#7040A0', background: '#ede4f7', borderRadius: 8, padding: '6px 10px', marginBottom: 10, lineHeight: 1.4 }}>
-                              🌙 Deload week — fewer sets and ~10% lighter loads. Recover and let your body adapt.
-                            </div>
-                          )}
-                          {(Array.isArray(wk.sessions) ? wk.sessions : Object.entries(wk.sessions).map(([k, v]) => ({ label: k, ...v }))).map((sess, si) => {
-                            const label = sess.label || sess.name || String.fromCharCode(65 + si); // A, B, C
-                            const logged = loggedFor(wNum, label);
-                            const skipped = !logged && isSessionSkipped(wNum, label, rawProgram?.id);
-                            return (
-                              <div key={si} style={{ marginBottom: si < (wk.sessions.length || Object.keys(wk.sessions).length) - 1 ? 10 : 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                                  <span style={{ fontSize: 12, fontWeight: 700, color: c.charcoal }}>Session {label}</span>
-                                  {logged && (
-                                    <span style={{ fontSize: 9, fontWeight: 700, color: '#2e7d4a', background: '#e6f5ea', padding: '1px 7px', borderRadius: 999 }}>✓ Done</span>
-                                  )}
-                                  {skipped && (
-                                    <span style={{ fontSize: 9, fontWeight: 700, color: '#B0511F', background: '#fce4d6', padding: '1px 7px', borderRadius: 999 }}>Skipped</span>
-                                  )}
-                                </div>
-                                {(sess.exercises || []).map((ex, ei) => {
-                                  const exName = ex.name || ex.exercise;
-                                  const done = logged ? loggedSets(logged, exName) : null;
-                                  return (
-                                    <div key={ei} style={{
-                                      padding: '5px 0', fontSize: 12, color: c.charcoal,
-                                      borderBottom: ei < sess.exercises.length - 1 ? `1px solid ${c.line}` : 'none',
-                                    }}>
-                                      {done ? (
-                                        <>
-                                          <span>{exName}</span>
-                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-                                            {done.map((s, j) => {
-                                              // Bands sets are saved with a bands array; render the
-                                              // combo label instead of a weight. Legacy single-band
-                                              // sets (s.band) still show their original label.
-                                              const isBandsSet = Array.isArray(s.bands);
-                                              const isLegacyBand = !isBandsSet && typeof s.band === 'string';
-                                              const label = isBandsSet
-                                                ? `${comboLabel(s.bands)} × ${s.reps}`
-                                                : isLegacyBand
-                                                  ? `${s.band} band × ${s.reps}`
-                                                  : `${s.weight}${unit} × ${s.reps}`;
-                                              return (
-                                                <span key={j} style={{
-                                                  fontSize: 10, fontWeight: 700, color: '#2e7d4a',
-                                                  background: '#e6f5ea', padding: '2px 7px', borderRadius: 999,
-                                                }}>
-                                                  {label}
-                                                </span>
-                                              );
-                                            })}
-                                          </div>
-                                        </>
-                                      ) : (
-                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                          <span>{exName}</span>
-                                          <span style={{ color: c.muted, fontSize: 11 }}>
-                                            {setsForExercise(exName, isDeloadWk)}x{ex.reps || '?'}{ex.weight ? ` @ ${ex.weight}` : ''}
-                                          </span>
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        );
-      })}
-
-      {/* Calendar off weeks (injury/vacation) — marked from the home
-          screen, not tied to a specific training-week row above (a paused
-          week is a calendar interruption, not a program week). Purely a
-          log; removing one doesn't retroactively un-pause anything already
-          resolved by the week-progression math. */}
-      {(() => {
-        const offWeeks = Object.entries(getOffWeeks(rawProgram?.id))
-          .sort((a, b) => a[0].localeCompare(b[0]));
-        if (!offWeeks.length) return null;
-        return (
-          <div style={{ marginTop: 8 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: c.charcoal, padding: '0 2px 8px' }}>
-              Time off
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {offWeeks.map(([weekKey, entry]) => (
-                <div key={weekKey} style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '10px 12px', borderRadius: 12,
-                  background: c.white, border: `1px solid ${c.line}`,
-                }}>
-                  {entry.reason === 'injury'
-                    ? <HeartPulse size={14} color="#E25A75" />
-                    : <Palmtree size={14} color="#7AA5C9" />}
-                  <span style={{ fontSize: 12, fontWeight: 600, color: c.charcoal, flex: 1 }}>
-                    {labelForWeekKey(weekKey)} · {entry.reason === 'injury' ? 'Injury' : 'Vacation'}
-                  </span>
-                  <button
-                    onClick={() => { clearOffWeek(weekKey, rawProgram?.id); setOffWeeksBump(b => b + 1); }}
-                    style={{
-                      width: 26, height: 26, borderRadius: '50%', border: 'none',
-                      background: c.paper, display: 'flex', alignItems: 'center',
-                      justifyContent: 'center', cursor: 'pointer',
-                    }}
-                  >
-                    <X size={12} color={c.muted} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
+      ))}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, CalendarRange, Zap, HeartPulse, Palmtree, Plus, Trash2 } from 'lucide-react';
 import { c } from './tokens';
-import { getActiveProgram, getSessions, setsForExercise, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage, getCardioSessionsForWeek, addCardioSession, removeCardioSession, getSkippedSessionsForWeek, removeSkippedSession, getOffWeekWorkoutDays, setOffWeekWorkoutDay, weekKeyFor } from '../../lib/storage';
+import { getActiveProgram, getSessions, setsForExercise, getRestOverride, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage, getCardioSessionsForWeek, addCardioSession, removeCardioSession, getSkippedSessionsForWeek, removeSkippedSession, getOffWeekWorkoutDays, setOffWeekWorkoutDay, weekKeyFor } from '../../lib/storage';
 import { computeActiveNudge, markTriggerSeen } from './wrenTriggers';
 import { getCurrentWeekAndMesocycle } from './wrenHelpers';
 import OffWeeksModal from './OffWeeksModal';
@@ -120,6 +120,11 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
       // what the program JSON says. Wren's generated sets are often wrong.
       // On deload weeks this is reduced to cut volume.
       setsConfig[ex.name] = setsFor(ex.name);
+      // Manual rest-time override, set from the program's own edit page.
+      // Absent = ActiveWorkout falls back to the exercise catalog / a
+      // pattern-based default (see defaultRestSec in BloomApp.jsx).
+      const restOverride = getRestOverride(ex.name);
+      if (restOverride) rests[ex.name] = restOverride;
       if (ex.superset_with) {
         const existing = supersets.find(g => g.includes(ex.name) || g.includes(ex.superset_with));
         if (existing) {

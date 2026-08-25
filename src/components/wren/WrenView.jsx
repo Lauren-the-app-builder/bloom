@@ -12,7 +12,6 @@ import WrenChat from './WrenChat';
 export default function WrenView({ schedule, myWorkouts, setMyWorkouts, unit, allExercises, sessionsBump, onOpenSettings, onStartWorkout, onOpenPrograms }) {
   const program = getActiveProgram();
   const { week, hasStarted } = getCurrentWeekAndMesocycle(program);
-  const totalWeeks = program?.program_json?.weeks?.length || program?.weeks?.length || 0;
 
   return (
     <div style={{
@@ -71,7 +70,7 @@ export default function WrenView({ schedule, myWorkouts, setMyWorkouts, unit, al
             color: 'rgba(255,255,255,0.92)',
             textShadow: '0 1px 4px rgba(80,40,90,0.3)',
           }}>
-            {program && hasStarted ? `Week ${week}${totalWeeks ? ` of ${totalWeeks}` : ''}` : 'Your AI coach'}
+            {program && hasStarted ? `${week} week${week === 1 ? '' : 's'} of these workouts` : 'Your AI coach'}
           </div>
         </div>
         {onOpenPrograms && (

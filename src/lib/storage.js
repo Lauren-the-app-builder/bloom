@@ -322,6 +322,40 @@ export function clearSetsOverride(name) {
   save(SETS_OVERRIDES_KEY, next);
 }
 
+// ---------- Rest-time overrides ----------
+// { [exerciseName]: positiveInt seconds } — mirrors the sets-overrides
+// mechanism above. Lets the Program page set a custom rest time per
+// exercise without a hardcoded default. Absent = fall back to the
+// exercise's catalog restSec / defaultRestSec() (see BloomApp.jsx's
+// ActiveWorkout, which reads workout.rests before either fallback).
+const REST_OVERRIDES_KEY = 'wrenRestOverrides';
+
+export function getRestOverrides() {
+  const v = load(REST_OVERRIDES_KEY, {});
+  return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+}
+
+export function getRestOverride(name) {
+  const v = getRestOverrides()[name];
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+export function setRestOverride(name, seconds) {
+  const n = Number(seconds);
+  if (!name || !Number.isFinite(n) || n <= 0) return;
+  const next = { ...getRestOverrides(), [name]: n };
+  save(REST_OVERRIDES_KEY, next);
+}
+
+export function clearRestOverride(name) {
+  const overrides = getRestOverrides();
+  if (!(name in overrides)) return;
+  const next = { ...overrides };
+  delete next[name];
+  save(REST_OVERRIDES_KEY, next);
+}
+
 // ---------- Deload weeks (per program) ----------
 // Deload is no longer auto-assigned every 4th week — it now only takes
 // effect for weeks Lauren has explicitly confirmed with Wren. These
@@ -1336,8 +1370,8 @@ export function editProgramSession(op, programId) {
   // scoped per-program in this pass.
   const setsNum = Number(op.sets);
   const hasSets = Number.isFinite(setsNum) && setsNum > 0;
-  if (op.swap_from) clearSetsOverride(op.swap_from);
-  if (op.remove_exercise) clearSetsOverride(op.remove_exercise);
+  if (op.swap_from) { clearSetsOverride(op.swap_from); clearRestOverride(op.swap_from); }
+  if (op.remove_exercise) { clearSetsOverride(op.remove_exercise); clearRestOverride(op.remove_exercise); }
   if (hasSets && op.exercise) setSetsOverride(op.exercise, setsNum);
   if (hasSets && op.add_exercise) setSetsOverride(op.add_exercise, setsNum);
   const id = resolveProgramId(programId);

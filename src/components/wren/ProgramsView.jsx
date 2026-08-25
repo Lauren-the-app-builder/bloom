@@ -10,10 +10,10 @@ import ProgramDetailView from './ProgramDetailView';
 // list itself answers "which one am I on and how far in."
 function ProgramSubtitle({ program }) {
   const { week, hasStarted } = getCurrentWeekAndMesocycle(program);
-  const totalWeeks = program?.program_json?.weeks?.length || 0;
-  if (!totalWeeks) return <span>No days yet</span>;
+  const hasDays = !!program?.program_json?.weeks?.length;
+  if (!hasDays) return <span>No days yet</span>;
   if (!hasStarted) return <span>Not started yet</span>;
-  return <span>Week {week}{totalWeeks ? ` of ${totalWeeks}` : ''}</span>;
+  return <span>{week} week{week === 1 ? '' : 's'} in</span>;
 }
 
 function ProgramRow({ program, onOpen, onDuplicate, onRename, onArchive, onUnarchive }) {
