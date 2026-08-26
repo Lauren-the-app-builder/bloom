@@ -1016,6 +1016,7 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                               }
                               setScheduleBump(b => b + 1);
                             }}
+                            title={isSkipped ? 'Skipped — tap to undo' : 'Skip this session for this week'}
                             style={{
                               fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
                               border: 'none', cursor: 'pointer', fontFamily: 'inherit',
@@ -1023,7 +1024,7 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                               color: isSkipped ? c.muted : c.rosedeep,
                             }}
                           >
-                            {isSkipped ? 'Skipped — tap to undo' : 'Skip this week'}
+                            {isSkipped ? 'Skipped' : 'Skip'}
                           </button>
                         )}
                       </div>
