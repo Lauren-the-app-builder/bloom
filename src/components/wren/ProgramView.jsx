@@ -18,6 +18,21 @@ function collectSessions(program) {
     : Object.entries(week.sessions).map(([k, s]) => ({ ...s, session_label: s.session_label || k }));
 }
 
+// A single plain number ("12") becomes a real range using the same brackets
+// this app's own default program already uses (6-8, 8-10, 10-12, 12-15,
+// ...): the typed number is the TOP of the range, the bottom steps down by
+// a width that widens for higher-rep sets. Anything already a range (or
+// non-numeric, e.g. "AMRAP") is left exactly as typed.
+function normalizeRepRange(raw) {
+  const trimmed = String(raw ?? '').trim();
+  if (!trimmed || !/^\d+$/.test(trimmed)) return trimmed;
+  const top = parseInt(trimmed, 10);
+  if (!Number.isFinite(top) || top <= 0) return trimmed;
+  const width = top <= 5 ? 1 : top <= 12 ? 2 : top <= 15 ? 3 : 5;
+  const bottom = Math.max(1, top - width);
+  return `${bottom}-${top}`;
+}
+
 // Pair up exercises linked as a superset. The link is stored on just one
 // side (superset_with pointing at the other's name — see editProgramSession
 // in storage.js), so a pair is found whether `ex` points at its partner or
@@ -203,9 +218,10 @@ function ExerciseRow({ programId, sessionLabel, exercise, allExercises, isFirst,
     onChanged();
   };
   const commitReps = () => {
-    const trimmed = reps.trim();
-    if (trimmed && trimmed !== (exercise.reps || '')) {
-      editProgramSession({ session_label: sessionLabel, exercise: exercise.name, reps: trimmed }, programId);
+    const normalized = normalizeRepRange(reps.trim());
+    if (normalized && normalized !== (exercise.reps || '')) {
+      setReps(normalized);
+      editProgramSession({ session_label: sessionLabel, exercise: exercise.name, reps: normalized }, programId);
       onChanged();
     }
   };
@@ -360,7 +376,7 @@ function AddExerciseSheet({ sessionLabel, allExercises, onClose, onAdded }) {
   const save = () => {
     const trimmed = name.trim();
     if (!trimmed) { onClose(); return; }
-    onAdded(trimmed, reps.trim() || '10');
+    onAdded(trimmed, normalizeRepRange(reps.trim()) || '8-10');
   };
   return (
     <div style={{
