@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, ChevronLeft, CalendarRange, Zap, HeartPulse, Palmtree, Plus, Trash2, X } from 'lucide-react';
 import { c, SESSION_COLORS } from './tokens';
-import { getActiveProgram, getSessions, recordSession, setsForExercise, getRestOverride, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage, getCardioSessionsForWeek, addCardioSession, removeCardioSession, getSkippedSessionsForWeek, removeSkippedSession, getOffWeekWorkoutDays, setOffWeekWorkoutDay, weekKeyFor } from '../../lib/storage';
+import { getActiveProgram, getSessions, recordSession, setsForExercise, getRestOverride, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage, getCardioSessionsForWeek, addCardioSession, removeCardioSession, getSkippedSessionsForWeek, addSkippedSession, removeSkippedSession, getOffWeekWorkoutDays, setOffWeekWorkoutDay, weekKeyFor } from '../../lib/storage';
 import { computeActiveNudge, markTriggerSeen } from './wrenTriggers';
 import { getCurrentWeekAndMesocycle, labelForWeekKey } from './wrenHelpers';
 import OffWeeksModal from './OffWeeksModal';
@@ -756,6 +756,11 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                     const skipped = !done && skippedLabels.has(labelUp);
                     const skipReason = skipped ? skippedLabels.get(labelUp) : '';
                     const isToday = s.scheduled_day && s.scheduled_day.toLowerCase() === dayName.toLowerCase();
+                    // Skipped sessions drop off the list entirely for the
+                    // week instead of showing as a row — they resurface on
+                    // their own next week since the skip is keyed by week
+                    // number. The compact summary below keeps an undo path.
+                    if (skipped) return null;
                     return (
                       <button
                         key={s.session_label}
@@ -833,31 +838,51 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                           >
                             <Check size={12} color={c.muted} strokeWidth={2.5} />
                           </button>
-                        ) : skipped ? (
-                          /* Skipped chip — tap to un-skip if Lauren changes
-                             her mind and wants to train it after all. */
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (!window.confirm(`Un-skip Session ${s.session_label}? It'll show as scheduled again.`)) return;
-                              removeSkippedSession(currentWeek, s.session_label);
-                              setScheduleBump(b => b + 1);
-                            }}
-                            title="Skipped — tap to un-skip"
-                            style={{
-                              fontSize: 10, fontWeight: 700, color: c.muted,
-                              background: c.line, padding: '2px 8px', borderRadius: 999,
-                              border: 'none', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
-                            }}
-                          >
-                            Skipped
-                          </button>
                         ) : isToday ? (
                           <span style={{ fontSize: 10, fontWeight: 700, color: c.rosedeep, background: c.blushLight, padding: '2px 8px', borderRadius: 999 }}>Today</span>
                         ) : (
                           <Play size={12} color={c.muted} style={{ flexShrink: 0 }} />
                         )}
                       </button>
+                    );
+                  })}
+                  {/* Sessions skipped this week don't get a row above — just
+                      a quiet one-liner with an undo, since the skip itself
+                      already resets automatically next week. */}
+                  {allSessions.filter(s => {
+                    const labelUp = String(s.session_label).toUpperCase();
+                    return !doneLabels.has(labelUp) && skippedLabels.has(labelUp);
+                  }).map(s => {
+                    const labelUp = String(s.session_label).toUpperCase();
+                    const skipReason = skippedLabels.get(labelUp);
+                    return (
+                      <div
+                        key={`skipped-${s.session_label}`}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '6px 12px',
+                        }}
+                      >
+                        <span style={{ fontSize: 11, color: c.muted }}>
+                          Session {s.session_label} skipped this week{skipReason ? ` · ${skipReason}` : ''}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!window.confirm(`Un-skip Session ${s.session_label}? It'll show as scheduled again.`)) return;
+                            removeSkippedSession(currentWeek, s.session_label);
+                            setScheduleBump(b => b + 1);
+                          }}
+                          title="Skipped — tap to un-skip"
+                          style={{
+                            fontSize: 10, fontWeight: 700, color: c.muted,
+                            background: c.line, padding: '2px 8px', borderRadius: 999,
+                            border: 'none', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
+                          }}
+                        >
+                          Undo
+                        </button>
+                      </div>
                     );
                   })}
                   {/* Cardio sessions for this week — added by Lauren (or by
@@ -965,35 +990,69 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
               </>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {allSessions.map(s => (
-                  <div key={s.session_label}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: c.charcoal, marginBottom: 5 }}>
-                      Session {s.session_label}
-                    </div>
-                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                      {WEEKDAYS.map(day => {
-                        const active = draft[s.session_label] === day;
-                        const taken = !active && Object.entries(draft).some(([lbl, d]) => lbl !== s.session_label && d === day);
-                        return (
+                {allSessions.map(s => {
+                  const labelUp = String(s.session_label).toUpperCase();
+                  // Skip only applies to the currently-active training week
+                  // (matches Wren's skip_session default and how the Today
+                  // list hides skipped rows) — not shown while planning next
+                  // week, which hasn't started yet.
+                  const isSkipped = !planningNext && skippedLabels.has(labelUp);
+                  return (
+                    <div key={s.session_label}>
+                      <div style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        marginBottom: 5,
+                      }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: c.charcoal }}>
+                          Session {s.session_label}
+                        </div>
+                        {!planningNext && (
                           <button
-                            key={day}
-                            onClick={() => setDraft(d => ({ ...d, [s.session_label]: day }))}
+                            onClick={() => {
+                              if (isSkipped) {
+                                removeSkippedSession(currentWeek, s.session_label);
+                              } else {
+                                addSkippedSession(currentWeek, s.session_label);
+                              }
+                              setScheduleBump(b => b + 1);
+                            }}
                             style={{
-                              padding: '6px 9px', borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit',
-                              fontSize: 11, fontWeight: 700,
-                              border: `1px solid ${active ? c.rosedeep : c.line}`,
-                              background: active ? c.rosedeep : c.white,
-                              color: active ? 'white' : taken ? c.muted : c.charcoal,
-                              opacity: taken ? 0.55 : 1,
+                              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+                              border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                              background: isSkipped ? c.line : 'transparent',
+                              color: isSkipped ? c.muted : c.rosedeep,
                             }}
                           >
-                            {day.slice(0, 3)}
+                            {isSkipped ? 'Skipped — tap to undo' : 'Skip this week'}
                           </button>
-                        );
-                      })}
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', opacity: isSkipped ? 0.4 : 1 }}>
+                        {WEEKDAYS.map(day => {
+                          const active = draft[s.session_label] === day;
+                          const taken = !active && Object.entries(draft).some(([lbl, d]) => lbl !== s.session_label && d === day);
+                          return (
+                            <button
+                              key={day}
+                              disabled={isSkipped}
+                              onClick={() => setDraft(d => ({ ...d, [s.session_label]: day }))}
+                              style={{
+                                padding: '6px 9px', borderRadius: 999, cursor: isSkipped ? 'default' : 'pointer', fontFamily: 'inherit',
+                                fontSize: 11, fontWeight: 700,
+                                border: `1px solid ${active ? c.rosedeep : c.line}`,
+                                background: active ? c.rosedeep : c.white,
+                                color: active ? 'white' : taken ? c.muted : c.charcoal,
+                                opacity: taken ? 0.55 : 1,
+                              }}
+                            >
+                              {day.slice(0, 3)}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {/* Cardio block — separate from the lifting day-pickers
                     because cardio is user-added, week-scoped, and only
