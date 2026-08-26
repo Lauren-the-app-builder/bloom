@@ -5,7 +5,7 @@ import {
   getActiveProgram, getProgram, setsForExercise, getRestOverride, setRestOverride, clearRestOverride,
   editProgramSession,
 } from '../../lib/storage';
-import { getCurrentWeekAndMesocycle } from './wrenHelpers';
+import { getCurrentWeekAndMesocycle, groupExercises } from './wrenHelpers';
 
 // Every session in a program's structure, read from its first week — every
 // week is kept structurally identical by editProgramSession/
@@ -33,34 +33,6 @@ function normalizeRepRange(raw) {
   return `${bottom}-${top}`;
 }
 
-// Pair up exercises linked as a superset. The link is stored on just one
-// side (superset_with pointing at the other's name — see editProgramSession
-// in storage.js), so a pair is found whether `ex` points at its partner or
-// the partner points at `ex`. Everything else is its own single-item group.
-function groupExercises(exercises) {
-  const partnerIndex = (i) => {
-    const ex = exercises[i];
-    if (ex.superset_with) {
-      const j = exercises.findIndex((e, k) => k !== i && e.name === ex.superset_with);
-      if (j !== -1) return j;
-    }
-    return exercises.findIndex((e, k) => k !== i && e.superset_with === ex.name);
-  };
-  const groups = [];
-  const consumed = new Set();
-  exercises.forEach((ex, i) => {
-    if (consumed.has(i)) return;
-    const j = partnerIndex(i);
-    if (j !== -1 && !consumed.has(j)) {
-      consumed.add(i); consumed.add(j);
-      groups.push({ type: 'superset', indices: [i, j].sort((a, b) => a - b) });
-    } else {
-      consumed.add(i);
-      groups.push({ type: 'single', indices: [i] });
-    }
-  });
-  return groups;
-}
 
 // Up/down stepper for reordering — plain buttons (not icon-only toggles)
 // since there's no drag-and-drop library in this app; simple and reliable

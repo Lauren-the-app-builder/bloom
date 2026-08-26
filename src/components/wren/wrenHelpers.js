@@ -175,6 +175,37 @@ export function getCurrentWeekAndMesocycle(rawProgram) {
   };
 }
 
+// Pair up exercises linked as a superset. The link is stored on just one
+// side (superset_with pointing at the other's name — see editProgramSession
+// in storage.js), so a pair is found whether `ex` points at its partner or
+// the partner points at `ex`. Everything else is its own single-item group.
+// Shared by ProgramView (renders pairs together) and ProgramsView (counts
+// a pair's sets once, not twice, in the program-card total).
+export function groupExercises(exercises) {
+  const partnerIndex = (i) => {
+    const ex = exercises[i];
+    if (ex.superset_with) {
+      const j = exercises.findIndex((e, k) => k !== i && e.name === ex.superset_with);
+      if (j !== -1) return j;
+    }
+    return exercises.findIndex((e, k) => k !== i && e.superset_with === ex.name);
+  };
+  const groups = [];
+  const consumed = new Set();
+  exercises.forEach((ex, i) => {
+    if (consumed.has(i)) return;
+    const j = partnerIndex(i);
+    if (j !== -1 && !consumed.has(j)) {
+      consumed.add(i); consumed.add(j);
+      groups.push({ type: 'superset', indices: [i, j].sort((a, b) => a - b) });
+    } else {
+      consumed.add(i);
+      groups.push({ type: 'single', indices: [i] });
+    }
+  });
+  return groups;
+}
+
 // Plain-text rundown of one program's days/exercises, from its first week
 // (session content is uniform across weeks in this app's model — see
 // editProgramSession/addProgramSession in storage.js). Used so api/wren.js

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Plus, ChevronRight, Copy, Pencil, Archive, ArchiveRestore, Sparkles, X, ListChecks } from 'lucide-react';
 import { c } from './tokens';
 import { getPrograms, createProgram, duplicateProgram, renameProgram, archiveProgram, unarchiveProgram, setsForExercise } from '../../lib/storage';
-import { getCurrentWeekAndMesocycle } from './wrenHelpers';
+import { getCurrentWeekAndMesocycle, groupExercises } from './wrenHelpers';
 import ProgramDetailView from './ProgramDetailView';
 
 // One line of "how this program is doing" under its name — active first via
@@ -19,8 +19,11 @@ function ProgramSubtitle({ program }) {
 // "3 days · 42 sets" — day count plus the total effective set count across
 // every exercise in every session (respecting Wren/manual sets overrides,
 // same setsForExercise used on the program's own edit page), so this
-// updates automatically the moment a set count changes there. Read from
-// week 1 only — every week is kept structurally identical.
+// updates automatically the moment a set count changes there. A superset
+// pair counts once — as one round of both exercises together, not two
+// separate exercises' worth of sets — same grouping ProgramView uses to
+// render them as a single linked box. Read from week 1 only — every week
+// is kept structurally identical.
 function ProgramDayLabels({ program }) {
   const week = program?.program_json?.weeks?.[0];
   if (!week?.sessions) return null;
@@ -28,7 +31,11 @@ function ProgramDayLabels({ program }) {
   if (!sessions.length) return null;
   const totalSets = sessions.reduce((sum, sess) => {
     const exercises = sess?.exercises || [];
-    return sum + exercises.reduce((n, ex) => n + setsForExercise(ex.name, false), 0);
+    const groups = groupExercises(exercises);
+    return sum + groups.reduce((n, g) => {
+      const groupSets = Math.max(...g.indices.map(i => setsForExercise(exercises[i].name, false)));
+      return n + groupSets;
+    }, 0);
   }, 0);
   return <span>{sessions.length} day{sessions.length === 1 ? '' : 's'} · {totalSets} sets</span>;
 }
