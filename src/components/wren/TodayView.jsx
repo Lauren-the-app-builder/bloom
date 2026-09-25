@@ -1274,7 +1274,7 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
       })()}
 
       {/* Cardio progress card — logging a session already done (toward a
-          2-3x/week low-impact goal), distinct from the "Cardio this week"
+          1x/week low-impact goal), distinct from the "Cardio this week"
           day-picker above (that's for planning which day; this just marks
           one done right now). Writes a real logged session via
           recordSession so it shows up in history like anything else. */}
@@ -1287,15 +1287,14 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
             name: (/^Cardio:\s*(.+)$/i.exec(s.workoutName || '')?.[1] || 'Session').trim(),
           }));
         const cardioDoneCount = cardioLoggedThisWeek.length;
-        const goal = 2;
+        const goal = 1;
         // Always shows at least `goal` pips, but grows past it if she logs
         // more — extra sessions still earn a visible check instead of
         // capping out at the goal.
         const pipCount = Math.max(goal, cardioDoneCount);
         const message = justLoggedCardio
           ? 'Nice work! 🎉'
-          : cardioDoneCount === 0 ? 'Low-impact cardio, 2x a week'
-          : cardioDoneCount === 1 ? 'One down — nice start'
+          : cardioDoneCount === 0 ? 'Low-impact cardio, 1x a week'
           : cardioDoneCount === goal ? "Goal hit — you're doing great 🎉"
           : 'Crushing it this week! 🎉';
 
