@@ -3,7 +3,7 @@ import { Send, Sparkles, ChevronRight } from 'lucide-react';
 import { c } from './tokens';
 import {
   getProgramWrenMessages, addProgramWrenMessage, getProgram, updateProgramJson,
-  setProgramSchedule, editProgramSession, addProgramSession, getSessions, getMissedSessions,
+  setWeekSchedule, editProgramSession, addProgramSession, getSessions, getMissedSessions,
   addDeloadWeek, removeDeloadWeek, addInjuryWeek, removeInjuryWeek,
   addSkippedSession, removeSkippedSession, addWrenNote, getWrenNotes, removeWrenNote,
   addCardioSession,
@@ -80,7 +80,9 @@ export default function ProgramChat({ programId, onProgramChanged }) {
             for (const a of action.assignments) {
               if (a?.session_label && a?.day) dayByLabel[String(a.session_label).trim()] = String(a.day).trim();
             }
-            setProgramSchedule(dayByLabel, { programId });
+            // Scoped to just this calendar week — reverts to the recurring
+            // default automatically next week (see setWeekSchedule).
+            setWeekSchedule(dayByLabel, programId);
           }
           if (action.type === 'apply_deload' && Number.isFinite(Number(action.week_number))) {
             addDeloadWeek(Number(action.week_number), programId);

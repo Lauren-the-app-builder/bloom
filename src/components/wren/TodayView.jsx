@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Play, Leaf, Check, Sparkles, Heart, CalendarDays, History, Settings, ChevronRight, ChevronLeft, CalendarRange, Zap, HeartPulse, Palmtree, Plus, Trash2, X } from 'lucide-react';
 import { c, SESSION_COLORS } from './tokens';
-import { getActiveProgram, getSessions, recordSession, setsForExercise, getRestOverride, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage, getCardioSessionsForWeek, addCardioSession, removeCardioSession, getSkippedSessionsForWeek, addSkippedSession, removeSkippedSession, getOffWeekWorkoutDays, setOffWeekWorkoutDay, weekKeyFor } from '../../lib/storage';
+import { getActiveProgram, getSessions, recordSession, setsForExercise, getRestOverride, setProgramSchedule, isScheduleConfirmedThisWeek, markScheduleConfirmed, isNextWeekScheduleConfirmed, markNextWeekScheduleConfirmed, isDeloadWeek, deleteSession, addWrenMessage, getCardioSessionsForWeek, addCardioSession, removeCardioSession, getSkippedSessionsForWeek, addSkippedSession, removeSkippedSession, getOffWeekWorkoutDays, setOffWeekWorkoutDay, weekKeyFor, getWeekScheduleOverride, clearWeekScheduleOverride, nextWeekKey } from '../../lib/storage';
 import { computeActiveNudge, markTriggerSeen } from './wrenTriggers';
 import { getCurrentWeekAndMesocycle, labelForWeekKey } from './wrenHelpers';
 import OffWeeksModal from './OffWeeksModal';
@@ -73,7 +73,18 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
     }
   }
 
-  const todaySession = currentWeekData?.sessions?.find(s =>
+  // Wren can shuffle which day each session falls on for just THIS calendar
+  // week (e.g. "let's do B, A, C this week") without touching the recurring
+  // pattern set via the Edit button below — see setWeekSchedule in
+  // storage.js. Overlay it here so both "today's session" and the list
+  // below reflect it, and it naturally stops applying once the week ends.
+  const weekScheduleOverride = getWeekScheduleOverride(weekKeyFor(new Date()));
+  const allSessions = (currentWeekData?.sessions || []).map(s => {
+    const overrideDay = weekScheduleOverride[String(s.session_label).toUpperCase()];
+    return overrideDay ? { ...s, scheduled_day: overrideDay } : s;
+  });
+
+  const todaySession = allSessions.find(s =>
     s.scheduled_day?.toLowerCase() === dayName.toLowerCase()
   ) || null;
 
@@ -152,8 +163,6 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
       programId: rawProgram?.id || null,
     };
   };
-
-  const allSessions = currentWeekData?.sessions || [];
 
   // Count UNIQUE session labels logged since the start of the current PROGRAM
   // week (not calendar week). Counting raw records would double-count if she
@@ -1239,6 +1248,10 @@ export default function TodayView({ onStartWorkout, onStartCardio, sessionsBump,
                       // again when Monday rolls over.
                       if (Object.keys(dayByLabel).length) {
                         setProgramSchedule(dayByLabel, planningNext ? { confirmFor: 'next' } : undefined);
+                        // This sets the lasting recurring default — clear any
+                        // stale Wren-set one-week override for the same week
+                        // so it doesn't keep shadowing what was just saved.
+                        clearWeekScheduleOverride(planningNext ? nextWeekKey() : weekKeyFor(new Date()));
                       } else if (planningNext) {
                         // Edge case: empty draft + planning next week — just
                         // mark next week confirmed so the card stops asking.

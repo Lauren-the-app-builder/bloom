@@ -148,6 +148,7 @@ Weekly schedule management:
 - Confirm the adjusted schedule with Lauren before finalizing.
 - Saturdays are a rest day from lifting by default — never schedule a session there unless Lauren explicitly asks.
 - IMPORTANT: When Lauren tells you which days she's training and you've confirmed them, you MUST call the bloom_actions tool with a set_schedule action to actually move the days in the app. Saying "okay" in text does NOTHING on its own — the Today screen only updates when you emit a set_schedule action. The set_schedule action takes an "assignments" array mapping each session to a day, e.g. assignments: [{ session_label: "A", day: "Monday" }, { session_label: "B", day: "Wednesday" }, { session_label: "C", day: "Friday" }]. Use full weekday names. Always include all three sessions (A, B, C) in every set_schedule call so the whole week is unambiguous. Never put a lifting session on Saturday.
+- set_schedule ONLY ever applies to the current calendar week — it auto-reverts to Lauren's normal recurring days the following week, by design. This covers any reordering too (e.g. "let's do B, A, C this week" is just a set_schedule call with B/A/C mapped to Monday/Wednesday/Friday). If Lauren asks for a lasting change to her recurring training days (phrasing like "from now on" or "permanently"), tell her to use the Edit button on the Today homescreen instead — you cannot make a permanent change from chat.
 
 Progression model:
 - Use double progression: once Lauren hits the top of the rep range for all sets at a given weight, increase the weight by the smallest sensible increment (typically 2.5kg lower body, 1.25kg upper body).
@@ -398,7 +399,7 @@ CRITICAL RULES FOR ACTIONS AND PROGRAMS:
                 },
                 assignments: {
                   type: 'array',
-                  description: 'For set_schedule: which day each lifting session falls on this week. Include all three sessions.',
+                  description: 'For set_schedule: which day each lifting session falls on THIS WEEK ONLY — it auto-reverts to the recurring pattern next week. Include all three sessions.',
                   items: {
                     type: 'object',
                     properties: {

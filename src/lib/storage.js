@@ -540,6 +540,50 @@ export function removeSkippedSession(weekNum, label, programId) {
   return next;
 }
 
+// ---------- Week-scoped schedule override (per program) ----------
+// A one-off day/order change for a single calendar week — e.g. Lauren tells
+// Wren "let's do B, A, C this week." Distinct from setProgramSchedule below
+// (used by the homepage's Edit button), which rewrites every week and is
+// meant to be the lasting recurring default. This is keyed by weekKey so it
+// naturally reverts once the calendar rolls into a week with no override —
+// TodayView falls back to the recurring scheduled_day from program_json.
+// Shape: { [weekKey]: { [session_label]: day } }
+export function getWeekScheduleOverride(weekKey, programId) {
+  const all = getProgramMeta(programId).weekScheduleOverrides;
+  const forWeek = all && typeof all === 'object' ? all[weekKey] : null;
+  return forWeek && typeof forWeek === 'object' ? forWeek : {};
+}
+
+// Sets the CURRENT calendar week's override (this is what Wren's
+// set_schedule action writes to — always "this week," never the recurring
+// default). Also marks the schedule confirmed so the "New week, which days
+// are you training?" nag doesn't reappear.
+export function setWeekSchedule(dayByLabel, programId) {
+  const normalized = {};
+  for (const [label, day] of Object.entries(dayByLabel || {})) {
+    if (label && day) normalized[String(label).trim().toUpperCase()] = String(day).trim();
+  }
+  if (!Object.keys(normalized).length) return;
+  const id = resolveProgramId(programId);
+  const weekKey = currentWeekKey();
+  const all = getProgramMeta(id).weekScheduleOverrides || {};
+  const next = { ...all, [weekKey]: normalized };
+  updateProgramMeta(id, meta => ({ ...meta, weekScheduleOverrides: next }));
+  markScheduleConfirmed(id);
+}
+
+// Clears one week's override — used when the homepage's Edit button sets a
+// new lasting default, so a stale Wren-set override for that same week
+// doesn't keep shadowing it.
+export function clearWeekScheduleOverride(weekKey, programId) {
+  const id = resolveProgramId(programId);
+  const all = getProgramMeta(id).weekScheduleOverrides;
+  if (!all || !all[weekKey]) return;
+  const next = { ...all };
+  delete next[weekKey];
+  updateProgramMeta(id, meta => ({ ...meta, weekScheduleOverrides: next }));
+}
+
 // ---------- Wren long-term memory ----------
 // Append-only list of facts Wren has learned about Lauren and explicitly
 // chosen to remember (preferences, recurring issues, off-limit lifts she

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Sparkles, ChevronRight } from 'lucide-react';
 import { c } from './tokens';
-import { getWrenMessages, addWrenMessage, resetWrenChat, getActiveProgram, saveProgram, setProgramSchedule, editProgramSession, getSessions, getMissedSessions, addMissedSession, addDeloadWeek, removeDeloadWeek, addInjuryWeek, removeInjuryWeek, addSkippedSession, removeSkippedSession, addWrenNote, getWrenNotes, removeWrenNote, addCardioSession } from '../../lib/storage';
+import { getWrenMessages, addWrenMessage, resetWrenChat, getActiveProgram, saveProgram, setWeekSchedule, editProgramSession, getSessions, getMissedSessions, addMissedSession, addDeloadWeek, removeDeloadWeek, addInjuryWeek, removeInjuryWeek, addSkippedSession, removeSkippedSession, addWrenNote, getWrenNotes, removeWrenNote, addCardioSession } from '../../lib/storage';
 
 // If the gap since Lauren's last interaction with Wren exceeds this, the
 // chat starts fresh on next open — Wren has no memory of the old thread,
@@ -142,7 +142,9 @@ DO NOT generate the program yet. Just introduce yourself and ask if she has anyt
             for (const a of action.assignments) {
               if (a?.session_label && a?.day) dayByLabel[String(a.session_label).trim()] = String(a.day).trim();
             }
-            setProgramSchedule(dayByLabel);
+            // Scoped to just this calendar week — reverts to the recurring
+            // default automatically next week (see setWeekSchedule).
+            setWeekSchedule(dayByLabel);
           }
           if (action.type === 'apply_deload' && Number.isFinite(Number(action.week_number))) {
             // Lauren must have already said yes in chat — the system prompt
