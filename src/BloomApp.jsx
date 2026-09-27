@@ -95,7 +95,7 @@ import {
   Zap,
   ListChecks,
 } from "lucide-react";
-import { useLocalState, recordSession, getSessions, getSessionsForProgram, getLastSession, getBaselineSessions, updateSession, deleteSession, load, save, getActiveProgram, getMissedSessions, ensureSessionAOrder, ensureSessionBPulldown, ensureSessionCLegCurl, getWrenNotes, removeWrenNote, clearWrenNotes, getWorkoutDraft, saveWorkoutDraft, clearWorkoutDraft } from "./lib/storage";
+import { useLocalState, recordSession, getSessions, getSessionsForProgram, getLastSession, getBaselineSessions, updateSession, deleteSession, load, save, getActiveProgram, getMissedSessions, ensureSessionAOrder, ensureSessionBPulldown, ensureSessionCLegCurl, getWrenNotes, removeWrenNote, clearWrenNotes, getWorkoutDraft, saveWorkoutDraft, clearWorkoutDraft, getNourishPhase } from "./lib/storage";
 import { EXERCISE_DB } from "./lib/exerciseDb";
 import { deleteWorkoutRemote } from "./lib/sync";
 import { subscribeToPush, scheduleRestPush, cancelRestPush } from "./lib/push";
@@ -1987,6 +1987,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
       const stalled = !isBands && isStalled(name);
 
       let status, detail, reco;
+      let regressed = false, regressedDetail = '';
       if (isBands) {
         // Bands lifts (pull-ups etc.) — the app can't auto-judge progress.
         // Combo changes aren't regression; rep count at the SAME combo is
@@ -2023,12 +2024,22 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
             detail = `${lastTotal} → ${todayTotal} reps @ ${todayMaxWeight}${unit}`;
           } else {
             status = "same";
+            // Fewer total reps at the same weight is a genuine step back
+            // (not just a stall) — surfaced as `regressed` so a cut can
+            // color it differently than holding steady. See onTrack below.
+            if (todayTotal < lastTotal) {
+              regressed = true;
+              regressedDetail = `${lastTotal} → ${todayTotal} reps @ ${todayMaxWeight}${unit}`;
+            }
           }
         } else {
-          // Dropped weight — usually intentional (technique adjustment).
-          // Don't call it regression; the adjustments flow on this screen
-          // handles that explanation separately.
+          // Dropped weight — usually intentional (technique adjustment), so
+          // the coaching copy below still treats it like a stall rather than
+          // a regression. `regressed` just tracks the raw fact of a lower
+          // number for the cut-mode badge color — see onTrack below.
           status = "same";
+          regressed = true;
+          regressedDetail = `${lastMaxWeight} → ${todayMaxWeight}${unit}`;
         }
 
         if (stalled) reco = `Stalled 3 sessions at ${todayMaxWeight}${unit}. Try a deload (~10% lighter) or ask Wren to swap it.`;
@@ -2043,7 +2054,7 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
       // so we don't auto-fail). A stall always counts as off track.
       const onTrack = !stalled && (status === "weight_up" || status === "reps_up" || status === "new" || status === "bands" || allHit);
 
-      progressions.push({ name, status, detail, sets: setStatuses, onTrack, reco });
+      progressions.push({ name, status, detail, sets: setStatuses, onTrack, reco, regressed, regressedDetail });
     }
     // PR detection: compare today's best set per exercise against ALL historical sessions.
     const allSessions = getSessions();
@@ -2764,6 +2775,14 @@ function ActiveWorkout({ workout, onFinish, lastSessions = LAST_SESSIONS, exerci
                 // show the data and a neutral "Bands" tag instead of a
                 // verdict. (Pull-ups, assisted pull-ups, etc.)
                 else if (p.status === "bands") badge = { label: p.detail || "Bands", fg: c.rosedeep, bg: c.blushLight };
+                // On a cut, holding weight/reps steady is a win (your body's
+                // running a deficit) — only an actual drop reads as bad. Off
+                // a cut, keep the old neutral "—" for both cases.
+                else if (getNourishPhase() === "cut") {
+                  badge = p.regressed
+                    ? { label: `↓ ${p.regressedDetail}`, fg: "#c0392b", bg: "#fbe4e1" }
+                    : { label: "Held", fg: "#2e7d4a", bg: "#e6f4ea" };
+                }
                 else badge = { label: "—", fg: c.muted, bg: "transparent" };
 
                 return (
